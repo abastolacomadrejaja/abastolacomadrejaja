@@ -149,12 +149,22 @@
                 <input type="hidden" id="prod-id">
                 <div class="form-group">
                     <label>SKU (Código Unidad)</label>
-                    <input type="text" id="prod-sku" required>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="prod-sku" placeholder="Escanear o escribir..." required style="flex:1;">
+                        <button type="button" class="btn btn-secondary" id="btn-scan-sku" style="padding:10px 14px; display:inline-flex; align-items:center; gap:6px; font-size:13px; white-space:nowrap;">
+                            <i class="fas fa-barcode"></i> Escanear
+                        </button>
+                    </div>
                 </div>
                 <div style="display:flex; gap:10px;">
                     <div class="form-group" style="flex:2;">
                         <label>Código de Caja (Opc.)</label>
-                        <input type="text" id="prod-box-sku">
+                        <div style="display:flex; gap:6px;">
+                            <input type="text" id="prod-box-sku" placeholder="Opcional..." style="flex:1;">
+                            <button type="button" class="btn btn-secondary" id="btn-scan-box" style="padding:10px 12px; font-size:13px;" title="Escanear Caja">
+                                <i class="fas fa-barcode"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="form-group" style="flex:1;">
                         <label>Unds/Caja</label>

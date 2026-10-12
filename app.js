@@ -818,6 +818,8 @@ if (fileInput) {
 
 if(document.getElementById('btn-scan-pos')) document.getElementById('btn-scan-pos').addEventListener('click', () => openScanner('pos'));
 if(document.getElementById('btn-scan-inv')) document.getElementById('btn-scan-inv').addEventListener('click', () => openScanner('inventory'));
+if(document.getElementById('btn-scan-sku')) document.getElementById('btn-scan-sku').addEventListener('click', () => openScanner('form-sku'));
+if(document.getElementById('btn-scan-box')) document.getElementById('btn-scan-box').addEventListener('click', () => openScanner('form-box'));
 
 // Lector físico en POS (pistola USB / Bluetooth)
 if(document.getElementById('pos-search')) {
@@ -834,6 +836,24 @@ if(document.getElementById('pos-search')) {
 
 function handleBarcode(barcode, context) {
     barcode = barcode.trim();
+
+    // Si se está escaneando dentro del modal de Nuevo / Editar Producto
+    if (context === 'form-sku') {
+        const skuInput = document.getElementById('prod-sku');
+        if (skuInput) skuInput.value = barcode;
+        const existing = data.products.find(p => p.sku === barcode || p.boxSku === barcode);
+        if (existing) {
+            alert(`Aviso: Este código ya está asignado al producto "${existing.name}".`);
+        }
+        return true;
+    }
+
+    if (context === 'form-box') {
+        const boxInput = document.getElementById('prod-box-sku');
+        if (boxInput) boxInput.value = barcode;
+        return true;
+    }
+
     let match = null;
     let isBox = false;
 
