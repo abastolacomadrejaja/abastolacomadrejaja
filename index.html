@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>La Comadrejaja</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- HTML5 QR Code -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- Tema PWA -->
+    <meta name="theme-color" content="#1D1C1B">
+</head>
+<body>
+    <!-- Top Header -->
+    <header class="top-header no-print">
+        <img src="LOGOTIPO%20LA%20COMADREJAJA.jpeg" alt="Logo" style="height: 40px; width: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent-primary);">
+        <div class="header-title">
+            <h1>La Comadrejaja</h1>
+            <small id="cloud-status" style="display:inline-flex; align-items:center; gap:4px; font-weight:bold;"><i class="fas fa-cloud"></i> Conectando...</small>
+        </div>
+        <button class="icon-btn"><i class="fas fa-bell"></i></button>
+    </header>
+
+    <!-- Main Content -->
+    <main class="app-content no-print">
+        
+        <!-- Vista Balance / Dashboard -->
+        <section id="view-balance" class="view active">
+            <div class="balance-card">
+                <div class="balance-header">Utilidad Total</div>
+                <div class="balance-total" id="dash-profit">$0.00</div>
+                <div class="balance-breakdown">
+                    <div class="breakdown-item">
+                        <span>Ventas totales</span>
+                        <strong class="text-green" id="dash-sales">$0.00</strong>
+                    </div>
+                    <div class="breakdown-item">
+                        <span>Gastos totales</span>
+                        <strong class="text-red" id="dash-expenses">$0.00</strong>
+                    </div>
+                </div>
+            </div>
+            
+            <h3 class="section-title">Últimos Movimientos</h3>
+            <div class="feed-list" id="feed-list">
+                <!-- Feed se llena por JS -->
+            </div>
+
+            <!-- Botones de Acción (Fijos sobre la nav) -->
+            <div class="action-buttons-container">
+                <button class="btn btn-primary" id="btn-goto-pos">NUEVA VENTA</button>
+                <button class="btn btn-danger btn-bordered" id="btn-goto-expense">NUEVO GASTO</button>
+            </div>
+        </section>
+
+        <!-- Vista POS (Tienda) -->
+        <section id="view-pos" class="view">
+            <div class="pos-layout">
+                <div class="pos-products">
+                    <div style="display:flex; gap: 10px; margin-bottom: 15px;">
+                        <input type="text" id="pos-search" class="search-input" placeholder="Buscar o escanear..." style="margin-bottom:0; flex:1;">
+                        <button id="btn-scan-pos" class="btn btn-secondary"><i class="fas fa-camera"></i> Escanear</button>
+                    </div>
+                    <div class="products-grid" id="pos-grid"></div>
+                </div>
+                <div class="pos-cart">
+                    <h3 style="margin-bottom: 10px; color: var(--text-dark);">Carrito Actual</h3>
+                    <div class="cart-items" id="cart-items"></div>
+                    <div class="cart-summary">
+                        <div class="totals-multi">
+                            <div class="tot-row"><span class="currency-label">Total USD:</span> <strong id="cart-total-usd" class="cart-total-main">$0.00</strong></div>
+                            <div class="tot-row"><span class="currency-label">Equiv COP:</span> <span id="cart-total-cop">0</span></div>
+                            <div class="tot-row"><span class="currency-label">Equiv VES:</span> <span id="cart-total-ves">0</span></div>
+                        </div>
+                        <button class="btn btn-primary w-100" id="btn-checkout" disabled>PROCESAR PAGO</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Vista Inventario -->
+        <section id="view-inventory" class="view">
+            <div class="view-header-inline">
+                <h2>Inventario</h2>
+                <div style="display:flex; gap:10px;">
+                    <button id="btn-scan-inv" class="btn btn-secondary btn-sm"><i class="fas fa-camera"></i> Escanear</button>
+                    <button class="btn btn-primary btn-sm" id="btn-new-product"><i class="fas fa-plus"></i> Añadir</button>
+                </div>
+            </div>
+            <div class="inventory-list" id="inventory-list">
+                <!-- Productos se llenan por JS -->
+            </div>
+        </section>
+
+        <!-- Vista Configuración -->
+        <section id="view-settings" class="view">
+            <h2 style="margin-bottom: 15px;">Configuración</h2>
+            <div class="card bg-neutral">
+                <h3 style="margin-bottom: 15px;">Tasas de Cambio</h3>
+                <div class="form-group">
+                    <label>Tasa USD (Base)</label>
+                    <input type="number" value="1" disabled>
+                </div>
+                <div class="form-group">
+                    <label>Tasa COP</label>
+                    <input type="number" id="rate-cop" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Tasa VES</label>
+                    <input type="number" id="rate-ves" step="0.01">
+                </div>
+                <button class="btn btn-primary w-100" id="btn-save-rates">GUARDAR TASAS</button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav no-print">
+        <img src="LOGOTIPO%20LA%20COMADREJAJA.jpeg" alt="Logo" class="desktop-logo" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; margin-bottom: 10px; border: 2px solid var(--accent-primary);">
+        <div class="nav-item active" data-target="view-balance">
+            <i class="fas fa-chart-pie"></i>
+            <span>Balance</span>
+        </div>
+        <div class="nav-item" data-target="view-pos">
+            <i class="fas fa-store"></i>
+            <span>Tienda</span>
+        </div>
+        <div class="nav-item" data-target="view-inventory">
+            <i class="fas fa-boxes"></i>
+            <span>Inventario</span>
+        </div>
+        <div class="nav-item" data-target="view-settings">
+            <i class="fas fa-cog"></i>
+            <span>Ajustes</span>
+        </div>
+    </nav>
+
+    <!-- Modales -->
+
+    <!-- Modal Formulario de Producto -->
+    <div id="modal-product" class="modal no-print">
+        <div class="modal-content">
+            <span class="close-modal" data-modal="modal-product">&times;</span>
+            <h2 id="modal-product-title" style="margin-bottom: 20px;">Nuevo Producto</h2>
+            <form id="form-product">
+                <input type="hidden" id="prod-id">
+                <div class="form-group">
+                    <label>SKU (Código Unidad)</label>
+                    <input type="text" id="prod-sku" required>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <div class="form-group" style="flex:2;">
+                        <label>Código de Caja (Opc.)</label>
+                        <input type="text" id="prod-box-sku">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Unds/Caja</label>
+                        <input type="number" id="prod-box-units" value="1" min="1">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Nombre del Producto</label>
+                    <input type="text" id="prod-name" required>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Costo (USD)</label>
+                        <input type="number" id="prod-cost" step="0.01" min="0" required>
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Precio (USD)</label>
+                        <input type="number" id="prod-price" step="0.01" min="0" required>
+                    </div>
+                </div>
+                <div class="form-group" id="group-stock">
+                    <label>Stock Inicial</label>
+                    <input type="number" id="prod-stock" value="0" min="0" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">GUARDAR PRODUCTO</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Ajuste de Inventario -->
+    <div id="modal-adjust" class="modal no-print">
+        <div class="modal-content">
+            <span class="close-modal" data-modal="modal-adjust">&times;</span>
+            <h2 style="margin-bottom: 10px;">Ajuste de Stock</h2>
+            <h4 id="adjust-prod-name" style="margin-bottom: 20px; color: var(--text-dark);"></h4>
+            <form id="form-adjust">
+                <input type="hidden" id="adjust-prod-id">
+                <div class="form-group">
+                    <label>Tipo de Movimiento</label>
+                    <select id="adjust-type">
+                        <option value="in">Entrada (Compra a Proveedor)</option>
+                        <option value="out">Salida (Merma / Consumo)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cantidad</label>
+                    <input type="number" id="adjust-qty" min="1" required>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">APLICAR MOVIMIENTO</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Nuevo Gasto -->
+    <div id="modal-expense" class="modal no-print">
+        <div class="modal-content">
+            <span class="close-modal" data-modal="modal-expense">&times;</span>
+            <h2 style="margin-bottom: 20px;">Registrar Gasto</h2>
+            <form id="form-expense">
+                <div class="form-group">
+                    <label>Descripción del Gasto</label>
+                    <input type="text" id="exp-desc" placeholder="Ej: Pago de Luz, Compra Varios..." required>
+                </div>
+                <div class="form-group">
+                    <label>Monto Total (USD)</label>
+                    <input type="number" id="exp-amount" step="0.01" min="0.01" required>
+                </div>
+                <button type="submit" class="btn btn-danger btn-bordered w-100">REGISTRAR GASTO</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Escáner de Código -->
+    <div id="modal-scanner" class="modal no-print">
+        <div class="modal-content" style="padding: 20px; max-width: 480px; width: 92%;">
+            <span class="close-modal" onclick="closeScanner()">&times;</span>
+            <h2 style="margin-bottom: 6px;"><i class="fas fa-barcode"></i> Escanear Código</h2>
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Apunta tu cámara al código de barra / QR o sube una foto.</p>
+            
+            <div id="scanner-error" style="display:none; background:#fff3cd; color:#856404; padding:12px; border-radius:8px; margin-bottom:15px; font-size:13px; line-height:1.4; border:1px solid #ffeeba;"></div>
+
+            <div id="reader" style="width: 100%; border-radius: 8px; overflow: hidden; background: #111; min-height: 250px;"></div>
+
+            <!-- Controles y opciones de escaneo -->
+            <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; gap: 8px;">
+                    <label for="scanner-file-input" class="btn btn-secondary" style="flex: 1; display:flex; align-items:center; justify-content:center; gap:8px; cursor:pointer; font-size:13px; padding:10px;">
+                        <i class="fas fa-image"></i> Cargar Foto/Imagen
+                    </label>
+                    <input type="file" id="scanner-file-input" accept="image/*" style="display: none;">
+                    
+                    <button type="button" class="btn btn-primary" onclick="retryCamera()" id="btn-retry-camera" style="font-size:13px; padding:10px;">
+                        <i class="fas fa-sync-alt"></i> Reintentar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recibo para Impresión (Oculto en pantalla normal) -->
+    <div id="receipt-area" style="display:none;">
+        <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px;">
+            <h2>La Comadrejaja</h2>
+            <p>Ticket de Venta</p>
+            <p id="rec-date"></p>
+            <p id="rec-id"></p>
+        </div>
+        <div id="rec-items" style="margin-bottom: 15px; border-bottom: 1px dashed #000; padding-bottom: 10px;"></div>
+        <div style="text-align: right; font-weight: bold; margin-bottom: 20px;">
+            <p>Total USD: <span id="rec-usd"></span></p>
+            <p style="font-size: 12px; font-weight: normal;">COP: <span id="rec-cop"></span></p>
+            <p style="font-size: 12px; font-weight: normal;">VES: <span id="rec-ves"></span></p>
+        </div>
+        <div style="text-align: center; font-size: 12px;">¡Gracias por su compra!</div>
+    </div>
+
+    <!-- Firebase SDK (Compat) para Navegador Vanilla JS -->
+    <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
+
+    <script src="app.js"></script>
+</body>
+</html>
