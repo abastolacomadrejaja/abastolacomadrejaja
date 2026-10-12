@@ -4,27 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>La Comadrejaja</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2.2">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- HTML5 QR Code -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- html2canvas para generar imagen de factura -->
+    <script src="html2canvas.min.js"></script>
+    <script>
+        if (typeof html2canvas === 'undefined') {
+            document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>');
+        }
+    </script>
     <!-- Tema PWA -->
     <meta name="theme-color" content="#1D1C1B">
 </head>
 <body>
-    <!-- Top Header -->
-    <header class="top-header no-print">
-        <img src="LOGOTIPO%20LA%20COMADREJAJA.jpeg" alt="Logo" style="height: 40px; width: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent-primary);">
-        <div class="header-title">
-            <h1>La Comadrejaja</h1>
-            <small id="cloud-status" style="display:inline-flex; align-items:center; gap:4px; font-weight:bold;"><i class="fas fa-cloud"></i> Conectando...</small>
-        </div>
-        <button class="icon-btn"><i class="fas fa-bell"></i></button>
-    </header>
+    <!-- Main Layout Container (Desktop & Mobile) -->
+    <div class="main-layout-container">
+        <!-- Top Header -->
+        <header class="top-header no-print">
+            <img src="LOGOTIPO%20LA%20COMADREJAJA.jpeg" alt="Logo" style="height: 40px; width: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent-primary);">
+            <div class="header-title">
+                <h1>La Comadrejaja</h1>
+                <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:2px;">
+                    <small id="cloud-status" style="display:inline-flex; align-items:center; gap:4px; font-weight:bold;"><i class="fas fa-cloud"></i> Conectando...</small>
+                    <span style="color:rgba(255,255,255,0.3); font-size:10px;">|</span>
+                    <small id="header-bcv-badge" style="color:var(--text-contrast); font-weight:bold; font-size:11px; display:inline-flex; align-items:center; gap:4px; cursor:pointer;" title="Tasa oficial BCV. Clic para actualizar.">
+                        <i class="fas fa-university" style="color:var(--accent-primary);"></i> BCV: <span id="header-bcv-val">...</span>
+                    </small>
+                </div>
+            </div>
+            <button class="icon-btn" id="btn-header-refresh-bcv" title="Actualizar tasa BCV"><i class="fas fa-sync-alt" id="header-bcv-spinner"></i></button>
+        </header>
 
-    <!-- Main Content -->
-    <main class="app-content no-print">
+        <!-- Main Content -->
+        <main class="app-content no-print">
         
         <!-- Vista Balance / Dashboard -->
         <section id="view-balance" class="view active">
@@ -59,9 +74,18 @@
         <section id="view-pos" class="view">
             <div class="pos-layout">
                 <div class="pos-products">
-                    <div style="display:flex; gap: 10px; margin-bottom: 15px;">
+                    <div style="display:flex; gap: 10px; margin-bottom: 10px;">
                         <input type="text" id="pos-search" class="search-input" placeholder="Buscar o escanear..." style="margin-bottom:0; flex:1;">
                         <button id="btn-scan-pos" class="btn btn-secondary"><i class="fas fa-camera"></i> Escanear</button>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:6px 12px; background:var(--bg-neutral); border-radius:8px; font-size:12px; color:#555;">
+                        <span style="display:inline-flex; align-items:center; gap:6px;">
+                            <i class="fas fa-university" style="color:var(--accent-primary);"></i> 
+                            BCV Oficial: <strong id="pos-bcv-rate-text" style="color:var(--text-dark);">...</strong>
+                        </span>
+                        <button id="btn-pos-refresh-bcv" type="button" style="background:none; border:none; color:var(--text-dark); cursor:pointer; font-size:11px; font-weight:bold; display:inline-flex; align-items:center; gap:4px;">
+                            <i class="fas fa-sync-alt" id="pos-bcv-spinner"></i> Actualizar
+                        </button>
                     </div>
                     <div class="products-grid" id="pos-grid"></div>
                 </div>
@@ -98,24 +122,39 @@
         <section id="view-settings" class="view">
             <h2 style="margin-bottom: 15px;">Configuración</h2>
             <div class="card bg-neutral">
-                <h3 style="margin-bottom: 15px;">Tasas de Cambio</h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                    <h3 style="margin:0;">Tasas de Cambio</h3>
+                    <button type="button" id="btn-fetch-bcv" class="btn btn-secondary btn-sm" style="padding:6px 12px; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fas fa-sync-alt" id="bcv-spinner"></i> Actualizar BCV
+                    </button>
+                </div>
                 <div class="form-group">
                     <label>Tasa USD (Base)</label>
                     <input type="number" value="1" disabled>
                 </div>
                 <div class="form-group">
-                    <label>Tasa COP</label>
+                    <label>Tasa COP (Pesos Colombianos)</label>
                     <input type="number" id="rate-cop" step="0.01">
                 </div>
                 <div class="form-group">
-                    <label>Tasa VES</label>
-                    <input type="number" id="rate-ves" step="0.01">
+                    <label>Tasa VES (Bolívares - BCV Oficial)</label>
+                    <input type="number" id="rate-ves" step="0.0001">
+                    <div id="bcv-status-card" style="margin-top:8px; padding:10px 12px; background:#fff; border:1px solid #e0e0e0; border-radius:8px; font-size:12px; display:flex; flex-direction:column; gap:4px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between;">
+                            <span style="font-weight:bold; color:var(--text-dark); display:flex; align-items:center; gap:6px;">
+                                <i class="fas fa-university" style="color:var(--accent-primary);"></i> Banco Central de Venezuela
+                            </span>
+                            <span id="bcv-live-indicator" style="color:#2ecc71; font-weight:bold; font-size:11px;">● En línea</span>
+                        </div>
+                        <div id="bcv-date-badge" style="color:#666;">Fecha Valor: Sincronizando...</div>
+                    </div>
                 </div>
                 <button class="btn btn-primary w-100" id="btn-save-rates">GUARDAR TASAS</button>
             </div>
         </section>
 
     </main>
+    </div>
 
     <!-- Bottom Navigation -->
     <nav class="bottom-nav no-print">
@@ -148,10 +187,10 @@
             <form id="form-product">
                 <input type="hidden" id="prod-id">
                 <div class="form-group">
-                    <label>SKU (Código Unidad)</label>
+                    <label>SKU (Código de Barra / Unidad)</label>
                     <div style="display:flex; gap:8px;">
                         <input type="text" id="prod-sku" placeholder="Escanear o escribir..." required style="flex:1;">
-                        <button type="button" class="btn btn-secondary" id="btn-scan-sku" style="padding:10px 14px; display:inline-flex; align-items:center; gap:6px; font-size:13px; white-space:nowrap;">
+                        <button type="button" class="btn" id="btn-scan-sku" style="background:var(--bg-header); color:var(--accent-primary); border:1px solid var(--accent-primary); padding:10px 14px; display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:bold; white-space:nowrap; border-radius:8px;">
                             <i class="fas fa-barcode"></i> Escanear
                         </button>
                     </div>
@@ -161,8 +200,8 @@
                         <label>Código de Caja (Opc.)</label>
                         <div style="display:flex; gap:6px;">
                             <input type="text" id="prod-box-sku" placeholder="Opcional..." style="flex:1;">
-                            <button type="button" class="btn btn-secondary" id="btn-scan-box" style="padding:10px 12px; font-size:13px;" title="Escanear Caja">
-                                <i class="fas fa-barcode"></i>
+                            <button type="button" class="btn" id="btn-scan-box" style="background:var(--bg-header); color:var(--accent-primary); border:1px solid var(--accent-primary); padding:10px 14px; font-size:13px; font-weight:bold; border-radius:8px;" title="Escanear Código de Caja">
+                                <i class="fas fa-barcode"></i> Escanear
                             </button>
                         </div>
                     </div>
@@ -264,27 +303,129 @@
         </div>
     </div>
 
-    <!-- Recibo para Impresión (Oculto en pantalla normal) -->
-    <div id="receipt-area" style="display:none;">
-        <div style="text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px;">
-            <h2>La Comadrejaja</h2>
-            <p>Ticket de Venta</p>
-            <p id="rec-date"></p>
-            <p id="rec-id"></p>
+    <!-- Modal Finalización de Venta / Opciones de Factura -->
+    <div id="modal-sale-complete" class="modal no-print-modal">
+        <div class="modal-content" style="max-width: 480px; width: 95%; padding: 20px;">
+            <div class="modal-sale-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:36px; height:36px; border-radius:50%; background:rgba(46,204,113,0.15); color:var(--success-green); display:flex; align-items:center; justify-content:center; font-size:18px;">
+                        <i class="fas fa-check"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:17px; color:var(--text-dark);">¡Venta Procesada!</h3>
+                        <small id="sale-summary-badge" style="color:#666; font-size:12px; font-weight:bold;"></small>
+                    </div>
+                </div>
+                <span class="close-modal" id="btn-close-sale-modal" data-modal="modal-sale-complete" style="position:static; font-size:24px;">&times;</span>
+            </div>
+
+            <!-- Botones de Acción Principales -->
+            <div class="modal-sale-actions" style="margin-bottom: 15px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                    <button type="button" class="btn btn-primary" id="btn-action-print" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:12px 10px; font-size:13px;">
+                        <i class="fas fa-print" style="font-size:22px;"></i>
+                        <span>Imprimir Factura</span>
+                    </button>
+                    <button type="button" class="btn" id="btn-action-whatsapp-img" style="background:#25D366; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:12px 10px; font-size:13px; font-weight:bold;">
+                        <i class="fab fa-whatsapp" style="font-size:24px;"></i>
+                        <span>Enviar a WhatsApp</span>
+                    </button>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-action-download-img" style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; font-size:12px; padding:8px;">
+                        <i class="fas fa-file-image"></i> Guardar Imagen
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btn-action-whatsapp-text" style="flex:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; font-size:12px; padding:8px;">
+                        <i class="fas fa-comment-dots"></i> WhatsApp Texto
+                    </button>
+                </div>
+            </div>
+
+            <!-- Campo Opcional: Teléfono de cliente para WhatsApp -->
+            <div class="modal-sale-phone" style="background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:10px; margin-bottom: 15px; text-align:left;">
+                <label style="font-size:12px; font-weight:bold; color:#555; display:block; margin-bottom:4px;">
+                    <i class="fab fa-whatsapp" style="color:#25D366;"></i> WhatsApp del Cliente (Opcional):
+                </label>
+                <input type="tel" id="client-whatsapp-phone" placeholder="Ej: 04241234567 o dejar vacío..." style="width:100%; padding:8px 10px; font-size:13px; border:1px solid #ccc; border-radius:6px; outline:none; box-sizing:border-box;">
+                <small style="color:#888; font-size:11px; display:block; margin-top:3px;">Si lo dejas vacío, abrirá WhatsApp para que elijas el chat.</small>
+            </div>
+
+            <!-- Vista Previa de la Factura -->
+            <div style="text-align:left; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:12px; font-weight:bold; color:#777;">Vista previa de la factura:</span>
+                <span style="font-size:11px; color:#999;"><i class="fas fa-receipt"></i> Formato térmico 80mm</span>
+            </div>
+
+            <div id="receipt-preview-wrapper" style="max-height: 280px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; padding: 12px; margin-bottom: 15px; display: flex; justify-content: center;">
+                
+                <!-- Recibo Estructurado -->
+                <div id="receipt-area" class="receipt-card">
+                    <!-- Encabezado con Logotipo a la izquierda -->
+                    <div class="receipt-header">
+                        <img src="LOGOTIPO%20LA%20COMADREJAJA.jpeg" alt="Logo" class="receipt-logo">
+                        <div class="receipt-header-text">
+                            <h2 class="receipt-title">Abasto La Comadrejaja</h2>
+                            <p class="receipt-subtitle">Ticket de Venta / Factura</p>
+                            <p class="receipt-address"><i class="fas fa-map-marker-alt"></i> Lomas Blancas Cordero</p>
+                            <p class="receipt-phone"><i class="fas fa-phone-alt"></i> Tel: +58 424-6439639</p>
+                        </div>
+                    </div>
+
+                    <div class="receipt-divider"></div>
+
+                    <div class="receipt-meta">
+                        <div><span>Fecha:</span> <span id="rec-date"></span></div>
+                        <div><span>Factura / Control:</span> <strong id="rec-id"></strong></div>
+                    </div>
+
+                    <div class="receipt-divider"></div>
+
+                    <!-- Lista de Productos -->
+                    <div id="rec-items" class="receipt-items"></div>
+
+                    <div class="receipt-divider"></div>
+
+                    <!-- Totales Multimoneda -->
+                    <div class="receipt-totals">
+                        <div class="rec-total-row main">
+                            <span>TOTAL USD:</span>
+                            <strong id="rec-usd">$0.00</strong>
+                        </div>
+                        <div class="rec-total-row">
+                            <span>Equiv. COP:</span>
+                            <span id="rec-cop">0 COP</span>
+                        </div>
+                        <div class="rec-total-row">
+                            <span>Equiv. VES (BCV):</span>
+                            <span id="rec-ves">0 VES</span>
+                        </div>
+                        <div class="rec-total-row" style="font-size:10px; color:#666; margin-top:2px;">
+                            <span>Tasa BCV Aplicada:</span>
+                            <span id="rec-bcv-rate"></span>
+                        </div>
+                    </div>
+
+                    <div class="receipt-footer">
+                        <p>¡Gracias por su compra y preferencia!</p>
+                        <small>Abasto La Comadrejaja • Siempre a su orden</small>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-sale-footer">
+                <button type="button" class="btn btn-secondary w-100" id="btn-action-done" style="padding:10px; font-size:14px; font-weight:bold;">
+                    <i class="fas fa-check-circle"></i> Finalizar y Nueva Venta
+                </button>
+            </div>
         </div>
-        <div id="rec-items" style="margin-bottom: 15px; border-bottom: 1px dashed #000; padding-bottom: 10px;"></div>
-        <div style="text-align: right; font-weight: bold; margin-bottom: 20px;">
-            <p>Total USD: <span id="rec-usd"></span></p>
-            <p style="font-size: 12px; font-weight: normal;">COP: <span id="rec-cop"></span></p>
-            <p style="font-size: 12px; font-weight: normal;">VES: <span id="rec-ves"></span></p>
-        </div>
-        <div style="text-align: center; font-size: 12px;">¡Gracias por su compra!</div>
     </div>
 
     <!-- Firebase SDK (Compat) para Navegador Vanilla JS -->
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=2.2"></script>
 </body>
 </html>

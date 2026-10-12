@@ -47,7 +47,13 @@ function generateUUID() {
 }
 
 // 1. Estructura de Datos (JSON) para LocalStorage y Memoria
-const defaultSettings = { usd: 1, cop: 4000, ves: 40 };
+const defaultSettings = { 
+    usd: 1, 
+    cop: 4000, 
+    ves: 876.80,
+    bcvFechaValor: "Martes, 13 Octubre 2026",
+    bcvLastUpdate: null 
+};
 let data = {
     settings: JSON.parse(localStorage.getItem('settings')) || defaultSettings,
     products: JSON.parse(localStorage.getItem('products')) || [],
@@ -56,6 +62,7 @@ let data = {
 
 // Asegurar integridad inicial
 if (!data.settings) data.settings = defaultSettings;
+if (!data.settings.bcvFechaValor) data.settings.bcvFechaValor = defaultSettings.bcvFechaValor;
 if (!data.products) data.products = [];
 if (!data.transactions) data.transactions = [];
 
@@ -93,7 +100,7 @@ let cart = [];
 // Formateadores de Moneda
 const formatUSD = (val) => `$${parseFloat(val).toFixed(2)}`;
 const formatCOP = (val) => `${(val * data.settings.cop).toLocaleString('es-CO')} COP`;
-const formatVES = (val) => `${(val * data.settings.ves).toLocaleString('es-VE')} VES`;
+const formatVES = (val) => `${(val * data.settings.ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} VES`;
 
 // DOM y Navegación Bottom Navigation
 const navItems = document.querySelectorAll('.nav-item');
@@ -142,6 +149,11 @@ document.getElementById('btn-goto-expense').addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', () => {
     updateViews();
     initFirestoreRealtime();
+    fetchBCVRate(false); // Consulta automática silenciosa de la tasa oficial del BCV al abrir la app
+    // Actualización periódica en segundo plano cada 30 minutos mientras la app esté abierta
+    setInterval(() => {
+        fetchBCVRate(false);
+    }, 30 * 60 * 1000);
 });
 
 function updateViews() {
@@ -204,10 +216,19 @@ function initFirestoreRealtime() {
     // 3. Escuchar tasas de cambio en tiempo real
     db.collection('config').doc('settings').onSnapshot((doc) => {
         if (doc.exists) {
-            data.settings = doc.data();
+            const cloudSettings = doc.data();
+            const hasRecentBCV = cloudSettings && cloudSettings.bcvFechaValor && cloudSettings.ves && Number(cloudSettings.ves) > 100;
+
+            data.settings = { ...data.settings, ...cloudSettings };
             localStorage.setItem('settings', JSON.stringify(data.settings));
-            renderSettings();
-            renderBalance();
+            updateViews();
+            renderCart();
+
+            // Si los datos en la nube tienen tasa antigua o no tienen fecha valor del BCV, consultar y actualizar la nube
+            if (!hasRecentBCV) {
+                console.log("Firestore settings sin sincronización BCV reciente, consultando tasa oficial...");
+                fetchBCVRate(false);
+            }
         } else {
             db.collection('config').doc('settings').set(data.settings);
         }
@@ -572,6 +593,9 @@ function renderCart() {
 
 document.getElementById('btn-checkout').addEventListener('click', processPayment);
 
+let currentTxForReceipt = null;
+let currentCartForReceipt = null;
+
 function processPayment() {
     if(cart.length === 0) return;
     
@@ -580,7 +604,12 @@ function processPayment() {
     
     cart.forEach(item => {
         totalUSD += item.product.basePrice * item.qty;
-        txItems.push({ productId: item.product.id, qty: item.qty, priceAtTime: item.product.basePrice });
+        txItems.push({ 
+            productId: item.product.id, 
+            name: item.product.name,
+            qty: item.qty, 
+            priceAtTime: item.product.basePrice 
+        });
         // Descontar inventario
         const p = data.products.find(x => x.id === item.product.id);
         if(p) {
@@ -595,56 +624,443 @@ function processPayment() {
         desc: `Factura POS`,
         date: Date.now(),
         items: txItems,
-        total: totalUSD
+        total: totalUSD,
+        ratesAtTime: {
+            cop: data.settings.cop,
+            ves: data.settings.ves
+        }
     };
 
     data.transactions.push(tx);
     if (db) db.collection('transactions').doc(tx.id).set(tx).catch(e => console.warn(e));
     saveData();
     
-    showReceipt(tx, cart);
+    // Guardar copia del carrito para la factura
+    const completedCart = cart.map(item => ({
+        qty: item.qty,
+        product: { ...item.product }
+    }));
     
     cart = [];
     if (document.getElementById('pos-search')) document.getElementById('pos-search').value = '';
     renderCart();
     updateViews();
+
+    // Mostrar modal con opciones de entrega de factura (Imprimir o WhatsApp)
+    openSaleCompleteModal(tx, completedCart);
 }
 
 // ==========================================
-// Recibo (Impresión)
+// Módulo: Facturación, Impresión y WhatsApp
 // ==========================================
-function showReceipt(tx, cartItems) {
+function openSaleCompleteModal(tx, cartItems) {
+    currentTxForReceipt = tx;
+    currentCartForReceipt = cartItems;
+
+    populateReceiptData(tx, cartItems);
+
     const txCode = tx.id.split('-')[0].toUpperCase();
-    document.getElementById('rec-id').innerText = `Ref: ${txCode}`;
-    document.getElementById('rec-date').innerText = new Date(tx.date).toLocaleString();
-    
-    const itemsList = document.getElementById('rec-items');
-    itemsList.innerHTML = '';
-    cartItems.forEach(item => {
-        itemsList.innerHTML += `
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:5px;">
-                <span>${item.qty}x ${item.product.name}</span>
-                <span>${formatUSD(item.product.basePrice * item.qty)}</span>
-            </div>
-        `;
+    const summaryBadge = document.getElementById('sale-summary-badge');
+    if (summaryBadge) {
+        summaryBadge.innerText = `Ref: ${txCode} • Total: ${formatUSD(tx.total)} (${formatVES(tx.total)})`;
+    }
+
+    const modal = document.getElementById('modal-sale-complete');
+    if (modal) modal.classList.add('show');
+}
+
+function closeSaleCompleteModal() {
+    const modal = document.getElementById('modal-sale-complete');
+    if (modal) modal.classList.remove('show');
+    const phoneInput = document.getElementById('client-whatsapp-phone');
+    if (phoneInput) phoneInput.value = '';
+}
+
+function populateReceiptData(tx, cartItems) {
+    const txCode = tx.id.split('-')[0].toUpperCase();
+    const dateFormatted = new Date(tx.date).toLocaleString('es-VE', {
+        dateStyle: 'short',
+        timeStyle: 'medium'
     });
 
-    document.getElementById('rec-usd').innerText = formatUSD(tx.total);
-    document.getElementById('rec-cop').innerText = formatCOP(tx.total);
-    document.getElementById('rec-ves').innerText = formatVES(tx.total);
+    const recId = document.getElementById('rec-id');
+    const recDate = document.getElementById('rec-date');
+    if (recId) recId.innerText = `Ref: ${txCode}`;
+    if (recDate) recDate.innerText = dateFormatted;
+    
+    const itemsList = document.getElementById('rec-items');
+    if (itemsList) {
+        itemsList.innerHTML = '';
+        cartItems.forEach(item => {
+            const itemTotal = item.product.basePrice * item.qty;
+            itemsList.innerHTML += `
+                <div class="receipt-item">
+                    <span class="item-qty">${item.qty}x</span>
+                    <span class="item-name">${item.product.name}</span>
+                    <span class="item-price">${formatUSD(itemTotal)}</span>
+                </div>
+            `;
+        });
+    }
 
-    setTimeout(() => {
-        window.print();
-    }, 500);
+    const vesRate = (tx.ratesAtTime && tx.ratesAtTime.ves) || data.settings.ves;
+    const copRate = (tx.ratesAtTime && tx.ratesAtTime.cop) || data.settings.cop;
+
+    const recUsd = document.getElementById('rec-usd');
+    const recCop = document.getElementById('rec-cop');
+    const recVes = document.getElementById('rec-ves');
+    const recBcvRate = document.getElementById('rec-bcv-rate');
+
+    if (recUsd) recUsd.innerText = formatUSD(tx.total);
+    if (recCop) recCop.innerText = `${(tx.total * copRate).toLocaleString('es-CO')} COP`;
+    if (recVes) recVes.innerText = `${(tx.total * vesRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} VES`;
+    if (recBcvRate) recBcvRate.innerText = `1 USD = ${vesRate.toLocaleString('es-VE')} Bs`;
 }
 
+function printReceipt() {
+    window.print();
+}
+
+async function generateReceiptCanvas() {
+    const receiptEl = document.getElementById('receipt-area');
+    if (!receiptEl) return null;
+    
+    if (typeof html2canvas === 'undefined') {
+        alert("Cargando componente de imagen... Por favor intente en un instante.");
+        return null;
+    }
+
+    // Clonar el recibo y montarlo directamente en el body sin límites de overflow o max-height
+    const clone = receiptEl.cloneNode(true);
+    clone.id = 'receipt-render-clone';
+    
+    clone.style.position = 'fixed';
+    clone.style.top = '0';
+    clone.style.left = '0';
+    clone.style.width = '320px';
+    clone.style.minWidth = '320px';
+    clone.style.maxWidth = '320px';
+    clone.style.height = 'auto';
+    clone.style.minHeight = 'auto';
+    clone.style.maxHeight = 'none';
+    clone.style.overflow = 'visible';
+    clone.style.zIndex = '-99999';
+    clone.style.background = '#ffffff';
+    clone.style.boxShadow = 'none';
+    clone.style.margin = '0';
+    clone.style.padding = '18px 16px 26px 16px'; // Margen inferior generoso para que nunca se corte el pie
+
+    document.body.appendChild(clone);
+
+    // Esperar a que el navegador procese el renderizado en el layout
+    await new Promise(r => setTimeout(r, 60));
+
+    const totalHeight = Math.max(clone.scrollHeight, clone.offsetHeight);
+
+    let canvas = null;
+    try {
+        canvas = await html2canvas(clone, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            width: 320,
+            height: totalHeight,
+            windowWidth: 320,
+            windowHeight: totalHeight + 100,
+            x: 0,
+            y: 0,
+            scrollX: 0,
+            scrollY: 0
+        });
+    } catch (err) {
+        console.error("Error al generar imagen con html2canvas:", err);
+    } finally {
+        if (clone && clone.parentNode) {
+            clone.parentNode.removeChild(clone);
+        }
+    }
+
+    return canvas;
+}
+
+function generateWhatsAppTextMessage(tx, cartItems) {
+    if (!tx) return '';
+    const txCode = tx.id.split('-')[0].toUpperCase();
+    const dateStr = new Date(tx.date).toLocaleString('es-VE');
+    const vesRate = (tx.ratesAtTime && tx.ratesAtTime.ves) || data.settings.ves;
+    const copRate = (tx.ratesAtTime && tx.ratesAtTime.cop) || data.settings.cop;
+
+    let itemsStr = '';
+    (cartItems || tx.items || []).forEach(item => {
+        const name = item.product ? item.product.name : (item.name || 'Producto');
+        const price = item.product ? item.product.basePrice : (item.priceAtTime || 0);
+        itemsStr += `• ${item.qty}x ${name} - $${(price * item.qty).toFixed(2)}\n`;
+    });
+
+    return `🧾 *ABASTO LA COMADREJAJA*\n` +
+           `📍 Lomas Blancas Cordero\n` +
+           `📞 Tel: +58 424-6439639\n` +
+           `--------------------------------\n` +
+           `📄 *Factura Ref:* ${txCode}\n` +
+           `📅 *Fecha:* ${dateStr}\n` +
+           `--------------------------------\n` +
+           `*Detalle de Compra:*\n` +
+           itemsStr +
+           `--------------------------------\n` +
+           `💵 *Total USD:* $${tx.total.toFixed(2)}\n` +
+           `🇨🇴 *COP:* ${(tx.total * copRate).toLocaleString('es-CO')} COP\n` +
+           `🇻🇪 *VES (BCV):* ${(tx.total * vesRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} VES\n` +
+           `--------------------------------\n` +
+           `¡Gracias por su compra! 🙏`;
+}
+
+async function sendReceiptWhatsAppImage() {
+    if (!currentTxForReceipt) return;
+    const btn = document.getElementById('btn-action-whatsapp-img');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><span>Generando...</span>`;
+    btn.disabled = true;
+
+    try {
+        const canvas = await generateReceiptCanvas();
+        if (!canvas) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            return;
+        }
+
+        const txCode = currentTxForReceipt.id.split('-')[0].toUpperCase();
+        const phoneInput = document.getElementById('client-whatsapp-phone');
+        let rawPhone = phoneInput ? phoneInput.value.trim() : '';
+
+        let cleanPhone = rawPhone.replace(/\D/g, '');
+        if (cleanPhone.startsWith('0')) cleanPhone = '58' + cleanPhone.substring(1);
+        else if (cleanPhone.length === 10 && (cleanPhone.startsWith('412') || cleanPhone.startsWith('414') || cleanPhone.startsWith('424') || cleanPhone.startsWith('416') || cleanPhone.startsWith('426'))) {
+            cleanPhone = '58' + cleanPhone;
+        }
+
+        const textMessage = generateWhatsAppTextMessage(currentTxForReceipt, currentCartForReceipt);
+        const fileName = `Factura-La-Comadrejaja-${txCode}.png`;
+
+        canvas.toBlob(async (blob) => {
+            const file = new File([blob], fileName, { type: 'image/png' });
+
+            // En dispositivos móviles (Android / iOS) con soporte Web Share API de archivos:
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        title: `Factura ${txCode} - Abasto La Comadrejaja`,
+                        text: textMessage,
+                        files: [file]
+                    });
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    return;
+                } catch (shareErr) {
+                    if (shareErr.name !== 'AbortError') {
+                        console.warn("Share API error:", shareErr);
+                    }
+                }
+            }
+
+            // En PC o navegadores donde navigator.share no comparte archivos:
+            // 1. Descargar la imagen
+            downloadReceiptImageFromCanvas(canvas, fileName);
+
+            // 2. Abrir WhatsApp con el detalle
+            const waUrl = cleanPhone 
+                ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(textMessage)}`
+                : `https://api.whatsapp.com/send?text=${encodeURIComponent(textMessage)}`;
+
+            window.open(waUrl, '_blank');
+
+            alert(`✅ La imagen de la factura se descargó como "${fileName}".\n\nSe ha abierto WhatsApp con el detalle de la venta para que puedas adjuntarla.`);
+
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }, 'image/png');
+
+    } catch (err) {
+        console.error("Error al procesar WhatsApp Imagen:", err);
+        alert("No se pudo generar la imagen automáticamente. Puede imprimirla o enviar el resumen de texto.");
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function downloadReceiptImage() {
+    const canvas = await generateReceiptCanvas();
+    if (!canvas) return;
+    const txCode = currentTxForReceipt ? currentTxForReceipt.id.split('-')[0].toUpperCase() : 'VENTA';
+    downloadReceiptImageFromCanvas(canvas, `Factura-La-Comadrejaja-${txCode}.png`);
+}
+
+function downloadReceiptImageFromCanvas(canvas, filename) {
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = canvas.toDataURL('image/png');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function sendReceiptWhatsAppText() {
+    if (!currentTxForReceipt) return;
+    const phoneInput = document.getElementById('client-whatsapp-phone');
+    let rawPhone = phoneInput ? phoneInput.value.trim() : '';
+
+    let cleanPhone = rawPhone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('0')) cleanPhone = '58' + cleanPhone.substring(1);
+    else if (cleanPhone.length === 10 && (cleanPhone.startsWith('412') || cleanPhone.startsWith('414') || cleanPhone.startsWith('424') || cleanPhone.startsWith('416') || cleanPhone.startsWith('426'))) {
+        cleanPhone = '58' + cleanPhone;
+    }
+
+    const textMessage = generateWhatsAppTextMessage(currentTxForReceipt, currentCartForReceipt);
+    const waUrl = cleanPhone 
+        ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(textMessage)}`
+        : `https://api.whatsapp.com/send?text=${encodeURIComponent(textMessage)}`;
+
+    window.open(waUrl, '_blank');
+}
+
+// Event Listeners para modal de factura
+const btnActionPrint = document.getElementById('btn-action-print');
+if (btnActionPrint) btnActionPrint.addEventListener('click', printReceipt);
+
+const btnActionWhatsappImg = document.getElementById('btn-action-whatsapp-img');
+if (btnActionWhatsappImg) btnActionWhatsappImg.addEventListener('click', sendReceiptWhatsAppImage);
+
+const btnActionDownloadImg = document.getElementById('btn-action-download-img');
+if (btnActionDownloadImg) btnActionDownloadImg.addEventListener('click', downloadReceiptImage);
+
+const btnActionWhatsappText = document.getElementById('btn-action-whatsapp-text');
+if (btnActionWhatsappText) btnActionWhatsappText.addEventListener('click', sendReceiptWhatsAppText);
+
+const btnActionDone = document.getElementById('btn-action-done');
+if (btnActionDone) btnActionDone.addEventListener('click', closeSaleCompleteModal);
+
+const btnCloseSaleModal = document.getElementById('btn-close-sale-modal');
+if (btnCloseSaleModal) btnCloseSaleModal.addEventListener('click', closeSaleCompleteModal);
+
 // ==========================================
-// Módulo: Configuración
+// Módulo: Configuración & Tasa BCV Oficial
 // ==========================================
 function renderSettings() {
-    document.getElementById('rate-cop').value = data.settings.cop;
-    document.getElementById('rate-ves').value = data.settings.ves;
+    const rateCopInput = document.getElementById('rate-cop');
+    const rateVesInput = document.getElementById('rate-ves');
+    const bcvDateBadge = document.getElementById('bcv-date-badge');
+    const headerBcvVal = document.getElementById('header-bcv-val');
+    const posBcvRateText = document.getElementById('pos-bcv-rate-text');
+
+    if (rateCopInput) rateCopInput.value = data.settings.cop;
+    if (rateVesInput) rateVesInput.value = data.settings.ves;
+
+    const formattedVes = Number(data.settings.ves).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+    
+    if (headerBcvVal) {
+        headerBcvVal.innerText = `${formattedVes} Bs`;
+    }
+    if (posBcvRateText) {
+        posBcvRateText.innerText = `${formattedVes} Bs / USD`;
+    }
+    if (bcvDateBadge) {
+        bcvDateBadge.innerText = data.settings.bcvFechaValor ? `Fecha Valor: ${data.settings.bcvFechaValor}` : 'Fecha Valor: Sincronizada';
+    }
 }
+
+async function fetchBCVRate(manual = false) {
+    const spinners = [
+        document.getElementById('bcv-spinner'),
+        document.getElementById('header-bcv-spinner'),
+        document.getElementById('pos-bcv-spinner')
+    ];
+    spinners.forEach(s => { if (s) s.classList.add('fa-spin'); });
+
+    const badge = document.getElementById('bcv-date-badge');
+    const liveIndicator = document.getElementById('bcv-live-indicator');
+    if (badge && manual) badge.innerText = "Consultando tasa oficial del BCV...";
+
+    let rate = null;
+    let fechaValor = "";
+
+    try {
+        // Fuente 1 (Principal): Espejo en tiempo real de la base de datos oficial del BCV (CORS habilitado)
+        const res = await fetch('https://datos.cromstudio.com.ve/tasa', { cache: 'no-store' });
+        if (res.ok) {
+            const json = await res.json();
+            if (json && json.tasas && json.tasas.USD) {
+                rate = parseFloat(json.tasas.USD);
+                fechaValor = json.fecha_valor ? json.fecha_valor.trim() : "";
+            }
+        }
+    } catch (err) {
+        console.warn("Fallo cromstudio BCV API, probando fuente de respaldo:", err);
+    }
+
+    // Fuente 2 (Respaldo): DolarAPI Oficial BCV
+    if (!rate || isNaN(rate)) {
+        try {
+            const res2 = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', { cache: 'no-store' });
+            if (res2.ok) {
+                const json2 = await res2.json();
+                if (json2 && json2.promedio) {
+                    rate = parseFloat(json2.promedio);
+                    if (json2.fechaActualizacion) {
+                        fechaValor = "Fecha: " + new Date(json2.fechaActualizacion).toLocaleDateString('es-VE');
+                    }
+                }
+            }
+        } catch (err2) {
+            console.warn("Fallo dolarapi BCV API:", err2);
+        }
+    }
+
+    spinners.forEach(s => { if (s) s.classList.remove('fa-spin'); });
+
+    if (rate && !isNaN(rate) && rate > 0) {
+        data.settings.ves = rate;
+        if (fechaValor) data.settings.bcvFechaValor = fechaValor;
+        data.settings.bcvLastUpdate = new Date().toISOString();
+
+        saveData('settings');
+        updateViews();
+        renderCart();
+
+        if (liveIndicator) {
+            liveIndicator.innerHTML = '● En línea (BCV)';
+            liveIndicator.style.color = '#2ecc71';
+        }
+
+        if (manual) {
+            alert(`✅ Tasa BCV actualizada exitosamente desde la página oficial:\n\n1 USD = ${rate.toLocaleString('es-VE', {minimumFractionDigits: 2, maximumFractionDigits: 4})} Bs\n${data.settings.bcvFechaValor ? data.settings.bcvFechaValor : ''}`);
+        }
+        return true;
+    } else {
+        if (liveIndicator) {
+            liveIndicator.innerHTML = '⚠️ Conexión manual';
+            liveIndicator.style.color = '#e74c3c';
+        }
+        if (manual) {
+            alert("No se pudo conectar a los servidores del BCV en este momento. Verifique su conexión a Internet o ingrese la tasa manualmente.");
+        }
+        return false;
+    }
+}
+
+// Botones para refrescar tasa BCV
+const btnFetchBcv = document.getElementById('btn-fetch-bcv');
+if (btnFetchBcv) btnFetchBcv.addEventListener('click', () => fetchBCVRate(true));
+
+const btnHeaderRefreshBcv = document.getElementById('btn-header-refresh-bcv');
+if (btnHeaderRefreshBcv) btnHeaderRefreshBcv.addEventListener('click', () => fetchBCVRate(true));
+
+const headerBcvBadge = document.getElementById('header-bcv-badge');
+if (headerBcvBadge) headerBcvBadge.addEventListener('click', () => fetchBCVRate(true));
+
+const btnPosRefreshBcv = document.getElementById('btn-pos-refresh-bcv');
+if (btnPosRefreshBcv) btnPosRefreshBcv.addEventListener('click', () => fetchBCVRate(true));
 
 document.getElementById('btn-save-rates').addEventListener('click', () => {
     const copVal = parseFloat(document.getElementById('rate-cop').value);
@@ -658,6 +1074,7 @@ document.getElementById('btn-save-rates').addEventListener('click', () => {
     if (db) db.collection('config').doc('settings').set(data.settings).catch(e => console.warn(e));
     saveData('settings');
     updateViews();
+    renderCart();
     alert('Tasas actualizadas exitosamente.');
 });
 
@@ -863,7 +1280,21 @@ function handleBarcode(barcode, context) {
     }
 
     if (!match) {
-        alert('Producto no encontrado con el código: ' + barcode);
+        if (context === 'inventory') {
+            const wantToAdd = confirm(`Producto con código "${barcode}" no encontrado en el inventario.\n\n¿Deseas registrarlo como un nuevo producto ahora?`);
+            if (wantToAdd) {
+                document.getElementById('form-product').reset();
+                document.getElementById('prod-id').value = '';
+                document.getElementById('modal-product-title').innerText = 'Nuevo Producto';
+                const stockGroup = document.getElementById('group-stock');
+                if (stockGroup) stockGroup.style.display = 'block';
+                const skuInput = document.getElementById('prod-sku');
+                if (skuInput) skuInput.value = barcode;
+                document.getElementById('modal-product').classList.add('show');
+            }
+        } else {
+            alert('Producto no encontrado con el código: ' + barcode);
+        }
         return false;
     }
 
