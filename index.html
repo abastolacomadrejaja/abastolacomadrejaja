@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>La Comadrejaja</title>
-    <link rel="stylesheet" href="styles.css?v=2.2">
+    <link rel="stylesheet" href="styles.css?v=2.3">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- HTML5 QR Code -->
@@ -58,7 +58,12 @@
                 </div>
             </div>
             
-            <h3 class="section-title">Últimos Movimientos</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 class="section-title" style="margin-bottom:0;">Últimos Movimientos</h3>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="openResetZeroModal()" style="font-size:12px; padding:6px 10px; display:inline-flex; align-items:center; gap:5px;">
+                    <i class="fas fa-eraser" style="color:var(--accent-secondary);"></i> Dejar en Cero
+                </button>
+            </div>
             <div class="feed-list" id="feed-list">
                 <!-- Feed se llena por JS -->
             </div>
@@ -106,9 +111,12 @@
 
         <!-- Vista Inventario -->
         <section id="view-inventory" class="view">
-            <div class="view-header-inline">
+            <div class="view-header-inline" style="flex-wrap:wrap; gap:10px;">
                 <h2>Inventario</h2>
-                <div style="display:flex; gap:10px;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-danger btn-sm" onclick="openResetZeroModal()" title="Dar de baja o dejar inventario en cero" style="display:inline-flex; align-items:center; gap:5px;">
+                        <i class="fas fa-eraser"></i> En Cero / Baja
+                    </button>
                     <button id="btn-scan-inv" class="btn btn-secondary btn-sm"><i class="fas fa-camera"></i> Escanear</button>
                     <button class="btn btn-primary btn-sm" id="btn-new-product"><i class="fas fa-plus"></i> Añadir</button>
                 </div>
@@ -150,6 +158,19 @@
                     </div>
                 </div>
                 <button class="btn btn-primary w-100" id="btn-save-rates">GUARDAR TASAS</button>
+            </div>
+
+            <!-- Gestión de Reinicio / Dejar en Cero -->
+            <div class="card bg-neutral" style="margin-top: 20px; border: 1px solid rgba(227, 48, 38, 0.25);">
+                <h3 style="margin-bottom: 8px; color: var(--accent-secondary); display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-broom"></i> Control de Inventario y Cuentas en Cero
+                </h3>
+                <p style="font-size: 13px; color: #555; margin-bottom: 14px; line-height: 1.4;">
+                    Si deseas dar de baja a todo el inventario, eliminar los productos de prueba o reiniciar las cuentas de utilidad, ventas y gastos a <strong>$0.00</strong>:
+                </p>
+                <button type="button" class="btn btn-danger w-100" onclick="openResetZeroModal()" style="display:flex; align-items:center; justify-content:center; gap:8px; font-weight:bold;">
+                    <i class="fas fa-eraser"></i> OPCIONES PARA DEJAR TODO EN CERO
+                </button>
             </div>
         </section>
 
@@ -237,23 +258,89 @@
     <div id="modal-adjust" class="modal no-print">
         <div class="modal-content">
             <span class="close-modal" data-modal="modal-adjust">&times;</span>
-            <h2 style="margin-bottom: 10px;">Ajuste de Stock</h2>
-            <h4 id="adjust-prod-name" style="margin-bottom: 20px; color: var(--text-dark);"></h4>
+            <h2 style="margin-bottom: 10px;">Ajuste / Baja de Stock</h2>
+            <h4 id="adjust-prod-name" style="margin-bottom: 18px; color: var(--text-dark);"></h4>
             <form id="form-adjust">
                 <input type="hidden" id="adjust-prod-id">
                 <div class="form-group">
                     <label>Tipo de Movimiento</label>
                     <select id="adjust-type">
                         <option value="in">Entrada (Compra a Proveedor)</option>
-                        <option value="out">Salida (Merma / Consumo)</option>
+                        <option value="out">Dar de Baja / Salida (Merma o Retiro)</option>
+                        <option value="zero">Dar de Baja Total (Dejar Stock en 0)</option>
                     </select>
                 </div>
-                <div class="form-group">
-                    <label>Cantidad</label>
+                <div class="form-group" id="adjust-qty-group">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <label style="margin-bottom:0;">Cantidad</label>
+                        <button type="button" id="btn-adjust-max" style="background:none; border:none; color:var(--accent-secondary); font-size:12px; font-weight:bold; cursor:pointer; text-decoration:underline;">
+                            Dar de baja todo el stock
+                        </button>
+                    </div>
                     <input type="number" id="adjust-qty" min="1" required>
+                </div>
+                <div id="adjust-baja-options" style="display:none; background:#fff8f8; border:1px solid #f5c6cb; padding:10px 12px; border-radius:8px; margin-bottom:15px; font-size:12px; color:#721c24;">
+                    <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-weight:normal; margin:0; color:#721c24;">
+                        <input type="checkbox" id="adjust-reverse-cost" checked style="width:16px; height:16px; margin-top:2px;">
+                        <span><strong>Descontar también del Gasto en Balance:</strong> Reversa el costo de compra de estas unidades para que el Balance baje o quede en <strong>$0.00</strong>.</span>
+                    </label>
                 </div>
                 <button type="submit" class="btn btn-primary w-100">APLICAR MOVIMIENTO</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal Dejar Todo en Cero -->
+    <div id="modal-reset-zero" class="modal no-print">
+        <div class="modal-content" style="max-width: 440px;">
+            <span class="close-modal" data-modal="modal-reset-zero">&times;</span>
+            <h2 style="margin-bottom: 8px; display:flex; align-items:center; gap:8px; color:var(--text-dark);">
+                <i class="fas fa-eraser" style="color:var(--accent-secondary);"></i> Dejar en Cero
+            </h2>
+            <p style="font-size: 13px; color: #666; margin-bottom: 18px; line-height: 1.4;">
+                Selecciona cómo deseas dar de baja al inventario o reiniciar las cuentas a <strong>$0.00</strong>:
+            </p>
+
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <!-- Opción 1: Dar de baja todo el stock (Stock = 0) y Balance = $0.00 -->
+                <div style="background:var(--bg-neutral); padding:14px; border-radius:10px; border:1px solid #ddd;">
+                    <div style="font-weight:bold; font-size:14px; color:var(--text-dark); margin-bottom:4px;">
+                        1. Dar de Baja a Todo el Stock (Cantidades en 0)
+                    </div>
+                    <p style="font-size:12px; color:#666; margin-bottom:10px; line-height:1.35;">
+                        Pone el stock de todos los productos en <strong>0 unid.</strong> (conservando sus nombres, códigos y precios) y deja el Balance (Utilidad, Ventas y Gastos) en <strong>$0.00</strong>.
+                    </p>
+                    <button type="button" class="btn btn-primary w-100" id="btn-zero-all-stock" style="font-size:13px; padding:10px; font-weight:bold;">
+                        <i class="fas fa-box-open"></i> PONER STOCK EN 0 Y BALANCE EN $0.00
+                    </button>
+                </div>
+
+                <!-- Opción 2: Eliminar todos los productos y dejar todo en cero -->
+                <div style="background:#fff5f5; padding:14px; border-radius:10px; border:1px solid #f5c6cb;">
+                    <div style="font-weight:bold; font-size:14px; color:var(--accent-secondary); margin-bottom:4px;">
+                        2. Eliminar Todo el Inventario y Dejar Todo en Cero
+                    </div>
+                    <p style="font-size:12px; color:#666; margin-bottom:10px; line-height:1.35;">
+                        Elimina por completo todos los productos registrados y borra todos los movimientos, dejando Inventario, Ventas, Gastos y Utilidad en <strong>$0.00</strong>.
+                    </p>
+                    <button type="button" class="btn btn-danger w-100" id="btn-delete-all-everything" style="font-size:13px; padding:10px; font-weight:bold;">
+                        <i class="fas fa-trash-alt"></i> ELIMINAR INVENTARIO Y DEJAR TODO EN $0.00
+                    </button>
+                </div>
+
+                <!-- Opción 3: Solo reiniciar Balance y Movimientos a $0.00 -->
+                <div style="background:var(--bg-neutral); padding:14px; border-radius:10px; border:1px solid #ddd;">
+                    <div style="font-weight:bold; font-size:14px; color:var(--text-dark); margin-bottom:4px;">
+                        3. Solo Reiniciar Balance (Ventas y Gastos en $0.00)
+                    </div>
+                    <p style="font-size:12px; color:#666; margin-bottom:10px; line-height:1.35;">
+                        Mantiene tus productos y su stock actual sin cambios, pero limpia el historial de movimientos y deja Utilidad, Ventas y Gastos en <strong>$0.00</strong>.
+                    </p>
+                    <button type="button" class="btn btn-secondary w-100" id="btn-zero-only-balance" style="font-size:13px; padding:10px; font-weight:bold;">
+                        <i class="fas fa-sync"></i> REINICIAR SOLO BALANCE A $0.00
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -426,6 +513,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
 
-    <script src="app.js?v=2.2"></script>
+    <script src="app.js?v=2.3"></script>
 </body>
 </html>

@@ -177,15 +177,26 @@ function initFirestoreRealtime() {
     // 1. Escuchar productos en tiempo real
     db.collection('products').onSnapshot((snapshot) => {
         if (!snapshot.empty) {
+            localStorage.setItem('cloud_products_synced', 'true');
             const cloudProds = [];
             snapshot.forEach(doc => cloudProds.push(doc.data()));
             data.products = cloudProds;
             localStorage.setItem('products', JSON.stringify(data.products));
             renderInventory();
             renderPOSProducts(document.getElementById('pos-search') ? document.getElementById('pos-search').value : '');
-        } else if (data.products.length > 0) {
-            // Si la nube está vacía pero tenemos datos locales, subirlos
-            data.products.forEach(p => db.collection('products').doc(p.id).set(p));
+        } else {
+            if (!localStorage.getItem('cloud_products_synced') && data.products.length > 0) {
+                // Solo en la primera sincronización si la nube nunca tuvo datos
+                localStorage.setItem('cloud_products_synced', 'true');
+                data.products.forEach(p => db.collection('products').doc(p.id).set(p));
+            } else {
+                // Si se eliminaron todos los productos en la nube, vaciar también localmente
+                localStorage.setItem('cloud_products_synced', 'true');
+                data.products = [];
+                localStorage.setItem('products', JSON.stringify(data.products));
+                renderInventory();
+                renderPOSProducts(document.getElementById('pos-search') ? document.getElementById('pos-search').value : '');
+            }
         }
         updateCloudBadge('online', 'En la nube (En vivo)');
     }, (error) => {
@@ -200,14 +211,24 @@ function initFirestoreRealtime() {
     // 2. Escuchar transacciones en tiempo real
     db.collection('transactions').onSnapshot((snapshot) => {
         if (!snapshot.empty) {
+            localStorage.setItem('cloud_tx_synced', 'true');
             const cloudTx = [];
             snapshot.forEach(doc => cloudTx.push(doc.data()));
             cloudTx.sort((a, b) => b.date - a.date);
             data.transactions = cloudTx;
             localStorage.setItem('transactions', JSON.stringify(data.transactions));
             renderBalance();
-        } else if (data.transactions.length > 0) {
-            data.transactions.slice(-20).forEach(tx => db.collection('transactions').doc(tx.id).set(tx));
+        } else {
+            if (!localStorage.getItem('cloud_tx_synced') && data.transactions.length > 0) {
+                localStorage.setItem('cloud_tx_synced', 'true');
+                data.transactions.slice(-20).forEach(tx => db.collection('transactions').doc(tx.id).set(tx));
+            } else {
+                // Si se borraron las transacciones en la nube, dejar balance en cero
+                localStorage.setItem('cloud_tx_synced', 'true');
+                data.transactions = [];
+                localStorage.setItem('transactions', JSON.stringify(data.transactions));
+                renderBalance();
+            }
         }
     }, (error) => {
         console.warn("Firestore Transacciones:", error.message);
@@ -245,12 +266,21 @@ function renderBalance() {
     let expenses = 0;
     
     data.transactions.forEach(tx => {
-        if (tx.type === 'out') sales += tx.total; // Ventas = Entrada de dinero
-        if (tx.type === 'in') expenses += tx.total; // Compras/Gastos = Salida de dinero
+        const amount = parseFloat(tx.total) || 0;
+        if (tx.type === 'out') sales += amount; // Ventas = Entrada de dinero
+        else if (tx.type === 'in') expenses += amount; // Compras/Gastos = Salida de dinero
+        else if (tx.type === 'baja') expenses -= amount; // Baja de inventario reversa el gasto
     });
     
-    const profit = sales - expenses;
-    document.getElementById('dash-profit').innerText = formatUSD(profit);
+    if (sales < 0) sales = 0;
+    if (expenses < 0) expenses = 0;
+
+    // Redondear para evitar residuos decimales (-0.00)
+    sales = Math.round(sales * 100) / 100;
+    expenses = Math.round(expenses * 100) / 100;
+    const profit = Math.round((sales - expenses) * 100) / 100;
+
+    document.getElementById('dash-profit').innerText = formatUSD(Object.is(profit, -0) ? 0 : profit);
     document.getElementById('dash-sales').innerText = formatUSD(sales);
     document.getElementById('dash-expenses').innerText = formatUSD(expenses);
     
@@ -265,16 +295,17 @@ function renderBalance() {
     
     recent.forEach(tx => {
         const isSale = tx.type === 'out';
-        const iconClass = isSale ? 'fa-arrow-down' : 'fa-arrow-up';
-        const iconBg = isSale ? 'income' : 'expense';
+        const isBaja = tx.type === 'baja';
+        const iconClass = isSale ? 'fa-arrow-down' : (isBaja ? 'fa-undo' : 'fa-arrow-up');
+        const iconBg = (isSale || isBaja) ? 'income' : 'expense';
         
         let desc = tx.desc;
         if (!desc) {
             desc = isSale ? `Venta (Factura ${tx.id.split('-')[0].toUpperCase()})` : `Compra Inventario`;
         }
 
-        const amountColor = isSale ? 'text-green' : 'text-red';
-        const sign = isSale ? '+' : '-';
+        const amountColor = isSale ? 'text-green' : (isBaja ? 'text-green' : 'text-red');
+        const sign = isSale ? '+' : (isBaja ? 'Reverso ' : '-');
         const dateStr = new Date(tx.date).toLocaleDateString('es-ES', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
         
         feedList.innerHTML += `
@@ -284,11 +315,26 @@ function renderBalance() {
                     <div class="feed-desc">${desc}</div>
                     <div class="feed-date">${dateStr}</div>
                 </div>
-                <div class="feed-amount ${amountColor}">${sign}${formatUSD(tx.total)}</div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="feed-amount ${amountColor}">${sign}${formatUSD(tx.total)}</div>
+                    <button type="button" onclick="deleteTransaction('${tx.id}')" title="Eliminar este movimiento" style="background:none; border:none; color:#aaa; cursor:pointer; font-size:14px; padding:4px;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </div>
         `;
     });
 }
+
+window.deleteTransaction = (txId) => {
+    if (confirm('¿Deseas eliminar este movimiento del historial y recalcular el balance?')) {
+        localStorage.setItem('cloud_tx_synced', 'true');
+        data.transactions = data.transactions.filter(t => t.id !== txId);
+        if (db) db.collection('transactions').doc(txId).delete().catch(e => console.warn(e));
+        localStorage.setItem('transactions', JSON.stringify(data.transactions));
+        updateViews();
+    }
+};
 
 // Registro de Gastos Directos
 document.getElementById('form-expense').addEventListener('submit', (e) => {
@@ -340,9 +386,9 @@ function renderInventory() {
                     <span>${formatVES(p.basePrice)}</span>
                 </div>
                 <div class="prod-actions">
-                    <button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')"><i class="fas fa-edit"></i></button>
-                    <button class="btn btn-primary btn-sm" onclick="openAdjustModal('${p.id}')"><i class="fas fa-exchange-alt"></i> Ajuste</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')"><i class="fas fa-trash"></i></button>
+                    <button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')" title="Editar producto"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-primary btn-sm" onclick="openAdjustModal('${p.id}')"><i class="fas fa-exchange-alt"></i> Ajuste / Baja</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')" title="Eliminar producto"><i class="fas fa-trash"></i></button>
                 </div>
             </div>
         `;
@@ -414,26 +460,114 @@ window.editProduct = (id) => {
 };
 
 window.deleteProduct = (id) => {
-    if(confirm('¿Está seguro de que desea eliminar este producto?')) {
-        data.products = data.products.filter(p => p.id !== id);
+    const p = data.products.find(x => x.id === id);
+    const prodName = p ? p.name : 'este producto';
+    if(confirm(`¿Está seguro de que desea eliminar "${prodName}" del inventario?\n\nSe eliminará el producto y se descontarán sus movimientos de inventario para que el balance quede actualizado.`)) {
+        localStorage.setItem('cloud_products_synced', 'true');
+        localStorage.setItem('cloud_tx_synced', 'true');
+
+        data.products = data.products.filter(item => item.id !== id);
         if (db) db.collection('products').doc(id).delete().catch(e => console.warn(e));
-        saveData('products');
+
+        // Quitar también del carrito si estaba seleccionado
+        cart = cart.filter(c => c.id !== id);
+        renderCart();
+
+        // Limpiar las transacciones de entrada/ajuste asociadas a este producto
+        const txsToDelete = data.transactions.filter(tx => {
+            if (tx.type === 'in' || tx.type === 'baja' || (tx.type === 'out' && (!tx.total || tx.total === 0))) {
+                if (tx.items && tx.items.some(item => item.productId === id)) return true;
+                if (p && tx.desc && tx.desc.includes(p.name)) return true;
+            }
+            return false;
+        });
+
+        txsToDelete.forEach(tx => {
+            if (db) db.collection('transactions').doc(tx.id).delete().catch(e => console.warn(e));
+        });
+        const deleteIds = new Set(txsToDelete.map(t => t.id));
+        data.transactions = data.transactions.filter(tx => !deleteIds.has(tx.id));
+
+        // Si ya no queda ningún producto en el inventario, limpiar cualquier movimiento de compra/merma huérfano
+        if (data.products.length === 0) {
+            const orphanInvTxs = data.transactions.filter(tx => 
+                tx.type === 'baja' || 
+                (tx.type === 'out' && (!tx.total || tx.total === 0)) ||
+                (tx.type === 'in' && ((tx.items && tx.items.length > 0) || (tx.desc && (tx.desc.startsWith('Entrada inicial:') || tx.desc.startsWith('Compra inv:')))))
+            );
+            orphanInvTxs.forEach(tx => {
+                if (db) db.collection('transactions').doc(tx.id).delete().catch(e => console.warn(e));
+            });
+            const orphanIds = new Set(orphanInvTxs.map(t => t.id));
+            data.transactions = data.transactions.filter(tx => !orphanIds.has(tx.id));
+        }
+
+        localStorage.setItem('products', JSON.stringify(data.products));
+        localStorage.setItem('transactions', JSON.stringify(data.transactions));
         updateViews();
     }
 };
+
+function updateAdjustModalUI() {
+    const id = document.getElementById('adjust-prod-id').value;
+    const p = data.products.find(x => x.id === id);
+    const typeSelect = document.getElementById('adjust-type');
+    const qtyInput = document.getElementById('adjust-qty');
+    const bajaOptions = document.getElementById('adjust-baja-options');
+    if (!typeSelect || !qtyInput) return;
+
+    const type = typeSelect.value;
+    if (type === 'in') {
+        if (bajaOptions) bajaOptions.style.display = 'none';
+        qtyInput.readOnly = false;
+        qtyInput.min = "1";
+    } else if (type === 'out') {
+        if (bajaOptions) bajaOptions.style.display = 'block';
+        qtyInput.readOnly = false;
+        qtyInput.min = "1";
+    } else if (type === 'zero') {
+        if (bajaOptions) bajaOptions.style.display = 'block';
+        qtyInput.value = p ? p.stock : 0;
+        qtyInput.min = "0";
+        qtyInput.readOnly = true;
+    }
+}
+
+const adjustTypeSelect = document.getElementById('adjust-type');
+if (adjustTypeSelect) {
+    adjustTypeSelect.addEventListener('change', updateAdjustModalUI);
+}
+
+const btnAdjustMax = document.getElementById('btn-adjust-max');
+if (btnAdjustMax) {
+    btnAdjustMax.addEventListener('click', () => {
+        const id = document.getElementById('adjust-prod-id').value;
+        const p = data.products.find(x => x.id === id);
+        if (!p) return;
+        const typeSelect = document.getElementById('adjust-type');
+        if (typeSelect) typeSelect.value = 'zero';
+        updateAdjustModalUI();
+    });
+}
 
 window.openAdjustModal = (id, isBoxScan = false) => {
     const p = data.products.find(x => x.id === id);
     if(!p) return;
     document.getElementById('adjust-prod-id').value = p.id;
-    document.getElementById('adjust-prod-name').innerText = `${p.name} (Stock Actual: ${p.stock})`;
+    document.getElementById('adjust-prod-name').innerText = `${p.name} (Stock Actual: ${p.stock} unid.)`;
     document.getElementById('form-adjust').reset();
     
+    const reverseCheckbox = document.getElementById('adjust-reverse-cost');
+    if (reverseCheckbox) reverseCheckbox.checked = true;
+
     if (isBoxScan && p.unitsPerBox) {
         document.getElementById('adjust-qty').value = p.unitsPerBox;
         document.getElementById('adjust-type').value = 'in';
+    } else {
+        document.getElementById('adjust-type').value = 'in';
     }
 
+    updateAdjustModalUI();
     document.getElementById('modal-adjust').classList.add('show');
 };
 
@@ -441,39 +575,246 @@ document.getElementById('form-adjust').addEventListener('submit', (e) => {
     e.preventDefault();
     const id = document.getElementById('adjust-prod-id').value;
     const type = document.getElementById('adjust-type').value;
-    const qty = parseInt(document.getElementById('adjust-qty').value);
+    let qty = parseInt(document.getElementById('adjust-qty').value);
+    const reverseCheckbox = document.getElementById('adjust-reverse-cost');
+    const shouldReverseCost = reverseCheckbox ? reverseCheckbox.checked : true;
     
     const p = data.products.find(x => x.id === id);
+    if (!p) return;
+
+    if (type === 'zero') {
+        qty = p.stock;
+    }
+
+    if ((type === 'out' || type === 'zero') && p.stock <= 0) {
+        alert('El stock de este producto ya está en 0.');
+        document.getElementById('modal-adjust').classList.remove('show');
+        return;
+    }
     
-    if (type === 'out' && qty > p.stock) {
-        alert('Error: La cantidad a descontar es mayor al stock disponible.');
+    if ((type === 'out' || type === 'zero') && qty > p.stock) {
+        alert('Error: La cantidad a dar de baja es mayor al stock disponible.');
         return;
     }
 
-    if (type === 'in') p.stock += qty;
-    if (type === 'out') p.stock -= qty;
+    localStorage.setItem('cloud_products_synced', 'true');
+    localStorage.setItem('cloud_tx_synced', 'true');
 
-    if (db) db.collection('products').doc(p.id).update({ stock: p.stock }).catch(e => console.warn(e));
+    if (type === 'in') {
+        p.stock += qty;
+        if (db) db.collection('products').doc(p.id).update({ stock: p.stock }).catch(e => console.warn(e));
 
-    const valuationPrice = type === 'in' ? p.cost : p.basePrice;
-    const txTotal = type === 'out' ? 0 : (valuationPrice * qty);
-    const descText = type === 'in' ? `Compra inv: ${p.name}` : `Ajuste/Merma: ${p.name}`;
+        const tx = {
+            id: generateUUID(),
+            type: 'in',
+            desc: `Compra inv: ${p.name}`,
+            date: Date.now(),
+            items: [{productId: id, qty: qty, priceAtTime: p.cost}],
+            total: (parseFloat(p.cost) || 0) * qty
+        };
+        data.transactions.push(tx);
+        if (db) db.collection('transactions').doc(tx.id).set(tx).catch(e => console.warn(e));
+    } else {
+        // Baja de inventario (parcial o total a 0)
+        p.stock -= qty;
+        if (p.stock < 0) p.stock = 0;
+        if (db) db.collection('products').doc(p.id).update({ stock: p.stock }).catch(e => console.warn(e));
 
-    const tx = {
-        id: generateUUID(),
-        type: type,
-        desc: descText,
-        date: Date.now(),
-        items: [{productId: id, qty: qty, priceAtTime: valuationPrice}],
-        total: txTotal
-    };
+        if (shouldReverseCost) {
+            if (p.stock === 0) {
+                // Si el producto quedó en 0 unidades, eliminar sus registros de entrada/merma previos para que su gasto quede exactamente en $0.00
+                const prodTxs = data.transactions.filter(tx => {
+                    if (tx.type === 'in' || tx.type === 'baja' || (tx.type === 'out' && (!tx.total || tx.total === 0))) {
+                        if (tx.items && tx.items.some(item => item.productId === id)) return true;
+                        if (tx.desc && tx.desc.includes(p.name)) return true;
+                    }
+                    return false;
+                });
+                prodTxs.forEach(tx => {
+                    if (db) db.collection('transactions').doc(tx.id).delete().catch(e => console.warn(e));
+                });
+                const prodTxIds = new Set(prodTxs.map(t => t.id));
+                data.transactions = data.transactions.filter(tx => !prodTxIds.has(tx.id));
+            } else {
+                // Si es una baja parcial, descontar el costo de las entradas de este producto
+                let remainingToDiscount = (parseFloat(p.cost) || 0) * qty;
+                const prodInTxs = data.transactions.filter(tx => 
+                    tx.type === 'in' && ((tx.items && tx.items.some(item => item.productId === id)) || (tx.desc && tx.desc.includes(p.name)))
+                );
 
-    data.transactions.push(tx);
-    if (db) db.collection('transactions').doc(tx.id).set(tx).catch(e => console.warn(e));
-    saveData();
+                for (let tx of prodInTxs) {
+                    if (remainingToDiscount <= 0) break;
+                    if (tx.total <= remainingToDiscount) {
+                        remainingToDiscount -= tx.total;
+                        tx.total = 0;
+                    } else {
+                        tx.total = Math.round((tx.total - remainingToDiscount) * 100) / 100;
+                        remainingToDiscount = 0;
+                        if (db) db.collection('transactions').doc(tx.id).set(tx).catch(e => console.warn(e));
+                    }
+                }
+
+                // Borrar las entradas que hayan quedado en $0.00
+                const zeroTxs = prodInTxs.filter(t => t.total <= 0);
+                zeroTxs.forEach(tx => {
+                    if (db) db.collection('transactions').doc(tx.id).delete().catch(e => console.warn(e));
+                });
+                const zeroIds = new Set(zeroTxs.map(t => t.id));
+                data.transactions = data.transactions.filter(tx => !zeroIds.has(tx.id));
+
+                // Si aún quedó monto por reversar, registrar un movimiento de reverso
+                if (remainingToDiscount > 0.009) {
+                    const bajaTx = {
+                        id: generateUUID(),
+                        type: 'baja',
+                        desc: `Baja inv: ${p.name} (-${qty} unid.)`,
+                        date: Date.now(),
+                        items: [{productId: id, qty: qty, priceAtTime: p.cost}],
+                        total: Math.round(remainingToDiscount * 100) / 100
+                    };
+                    data.transactions.push(bajaTx);
+                    if (db) db.collection('transactions').doc(bajaTx.id).set(bajaTx).catch(e => console.warn(e));
+                }
+            }
+        } else {
+            // Si el usuario desmarcó descontar del gasto, solo registrar salida informativa en $0.00
+            const tx = {
+                id: generateUUID(),
+                type: 'out',
+                desc: `Ajuste/Merma: ${p.name} (-${qty} unid.)`,
+                date: Date.now(),
+                items: [{productId: id, qty: qty, priceAtTime: p.basePrice}],
+                total: 0
+            };
+            data.transactions.push(tx);
+            if (db) db.collection('transactions').doc(tx.id).set(tx).catch(e => console.warn(e));
+        }
+    }
+
+    localStorage.setItem('products', JSON.stringify(data.products));
+    localStorage.setItem('transactions', JSON.stringify(data.transactions));
     updateViews();
     document.getElementById('modal-adjust').classList.remove('show');
 });
+
+// ==========================================
+// Opciones Globales: Dejar Todo en Cero
+// ==========================================
+window.openResetZeroModal = () => {
+    const modal = document.getElementById('modal-reset-zero');
+    if (modal) modal.classList.add('show');
+};
+
+async function clearFirestoreCollection(collectionName) {
+    if (!db) return;
+    try {
+        const snapshot = await db.collection(collectionName).get();
+        const batchPromises = [];
+        snapshot.forEach(doc => {
+            batchPromises.push(doc.ref.delete());
+        });
+        await Promise.all(batchPromises);
+    } catch (e) {
+        console.warn(`Error limpiando colección ${collectionName}:`, e);
+    }
+}
+
+// Opción 1: Poner el stock de todos los productos en 0 y el Balance en $0.00
+const btnZeroAllStock = document.getElementById('btn-zero-all-stock');
+if (btnZeroAllStock) {
+    btnZeroAllStock.addEventListener('click', async () => {
+        if (!confirm('¿Confirmas dar de baja a todo el stock actual?\n\n• Todos los productos quedarán en 0 unidades (conservando nombres y precios).\n• Utilidad Total, Ventas y Gastos quedarán en $0.00.')) {
+            return;
+        }
+        localStorage.setItem('cloud_products_synced', 'true');
+        localStorage.setItem('cloud_tx_synced', 'true');
+
+        // Poner stock en 0 para cada producto
+        data.products.forEach(p => {
+            p.stock = 0;
+            if (db) db.collection('products').doc(p.id).set(p).catch(e => console.warn(e));
+        });
+
+        // Limpiar transacciones locales y en la nube
+        const oldTxs = [...data.transactions];
+        data.transactions = [];
+        cart = [];
+
+        localStorage.setItem('products', JSON.stringify(data.products));
+        localStorage.setItem('transactions', JSON.stringify([]));
+        renderCart();
+        updateViews();
+
+        if (db) {
+            oldTxs.forEach(tx => db.collection('transactions').doc(tx.id).delete().catch(e => console.warn(e)));
+            await clearFirestoreCollection('transactions');
+        }
+
+        document.getElementById('modal-reset-zero').classList.remove('show');
+        alert('✅ Todo el stock ha sido puesto en 0 unidades y el Balance ha quedado en $0.00.');
+    });
+}
+
+// Opción 2: Eliminar todos los productos del inventario y dejar todo en $0.00
+const btnDeleteAllEverything = document.getElementById('btn-delete-all-everything');
+if (btnDeleteAllEverything) {
+    btnDeleteAllEverything.addEventListener('click', async () => {
+        if (!confirm('⚠️ ¿Estás seguro de ELIMINAR TODO EL INVENTARIO y dejar todas las cuentas en $0.00?\n\nSe borrarán todos los productos y todos los movimientos registrados.')) {
+            return;
+        }
+        localStorage.setItem('cloud_products_synced', 'true');
+        localStorage.setItem('cloud_tx_synced', 'true');
+
+        const oldProds = [...data.products];
+        const oldTxs = [...data.transactions];
+
+        data.products = [];
+        data.transactions = [];
+        cart = [];
+
+        localStorage.setItem('products', JSON.stringify([]));
+        localStorage.setItem('transactions', JSON.stringify([]));
+        renderCart();
+        updateViews();
+
+        if (db) {
+            oldProds.forEach(p => db.collection('products').doc(p.id).delete().catch(e => console.warn(e)));
+            oldTxs.forEach(tx => db.collection('transactions').doc(tx.id).delete().catch(e => console.warn(e)));
+            await Promise.all([
+                clearFirestoreCollection('products'),
+                clearFirestoreCollection('transactions')
+            ]);
+        }
+
+        document.getElementById('modal-reset-zero').classList.remove('show');
+        alert('✅ El inventario ha sido eliminado por completo y todas las cuentas están en $0.00.');
+    });
+}
+
+// Opción 3: Solo reiniciar Balance y Movimientos a $0.00 (manteniendo inventario intacto)
+const btnZeroOnlyBalance = document.getElementById('btn-zero-only-balance');
+if (btnZeroOnlyBalance) {
+    btnZeroOnlyBalance.addEventListener('click', async () => {
+        if (!confirm('¿Deseas reiniciar el Balance (Utilidad, Ventas, Gastos) y los Últimos Movimientos a $0.00?\n\nTus productos y cantidades en inventario se mantendrán intactos.')) {
+            return;
+        }
+        localStorage.setItem('cloud_tx_synced', 'true');
+
+        const oldTxs = [...data.transactions];
+        data.transactions = [];
+
+        localStorage.setItem('transactions', JSON.stringify([]));
+        updateViews();
+
+        if (db) {
+            oldTxs.forEach(tx => db.collection('transactions').doc(tx.id).delete().catch(e => console.warn(e)));
+            await clearFirestoreCollection('transactions');
+        }
+
+        document.getElementById('modal-reset-zero').classList.remove('show');
+        alert('✅ El Balance (Utilidad, Ventas y Gastos) ha quedado en $0.00.');
+    });
+}
 
 // ==========================================
 // 3. Módulo de Facturación (POS)
