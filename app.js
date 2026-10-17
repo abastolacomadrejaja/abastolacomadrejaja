@@ -418,6 +418,10 @@ document.getElementById('form-expense').addEventListener('submit', (e) => {
 // ==========================================
 // 2. Módulo de Inventario
 // ==========================================
+function normalizeSearchText(str) {
+    return String(str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
 function renderInventory() {
     const list = document.getElementById('inventory-list');
     list.innerHTML = '';
@@ -426,7 +430,24 @@ function renderInventory() {
         return;
     }
 
-    data.products.forEach(p => {
+    const searchInput = document.getElementById('inventory-search');
+    const clearBtn = document.getElementById('btn-clear-inv-search');
+    const term = normalizeSearchText(searchInput ? searchInput.value : '');
+    if (clearBtn) clearBtn.style.display = term ? 'block' : 'none';
+
+    const words = term ? term.split(/\s+/) : [];
+    const filtered = data.products.filter(p => {
+        if (words.length === 0) return true;
+        const haystack = normalizeSearchText(`${p.name} ${p.sku} ${p.boxSku || ''}`);
+        return words.every(w => haystack.includes(w));
+    });
+
+    if (filtered.length === 0) {
+        list.innerHTML = `<p style="text-align:center; color:#888; margin-top:20px;">No se encontraron productos para "${searchInput.value.trim()}".</p>`;
+        return;
+    }
+
+    filtered.forEach(p => {
         const isLow = p.stock < 5;
         list.innerHTML += `
             <div class="product-card-inv">
@@ -449,6 +470,19 @@ function renderInventory() {
                 </div>
             </div>
         `;
+    });
+}
+
+const inventorySearchInput = document.getElementById('inventory-search');
+if (inventorySearchInput) {
+    inventorySearchInput.addEventListener('input', renderInventory);
+}
+const btnClearInvSearch = document.getElementById('btn-clear-inv-search');
+if (btnClearInvSearch) {
+    btnClearInvSearch.addEventListener('click', () => {
+        inventorySearchInput.value = '';
+        renderInventory();
+        inventorySearchInput.focus();
     });
 }
 
