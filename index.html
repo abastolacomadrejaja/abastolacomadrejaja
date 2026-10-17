@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -59,7 +59,7 @@
             </div>
             
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <h3 class="section-title" style="margin-bottom:0;">Últimos Movimientos</h3>
+                <h3 class="section-title" style="margin-bottom:0;">Ãšltimos Movimientos</h3>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="openResetZeroModal()" style="font-size:12px; padding:6px 10px; display:inline-flex; align-items:center; gap:5px;">
                     <i class="fas fa-eraser" style="color:var(--accent-secondary);"></i> Dejar en Cero
                 </button>
@@ -68,7 +68,7 @@
                 <!-- Feed se llena por JS -->
             </div>
 
-            <!-- Botones de Acción (Fijos sobre la nav) -->
+            <!-- Botones de AcciÃ³n (Fijos sobre la nav) -->
             <div class="action-buttons-container">
                 <button class="btn btn-primary" id="btn-goto-pos">NUEVA VENTA</button>
                 <button class="btn btn-danger btn-bordered" id="btn-goto-expense">NUEVO GASTO</button>
@@ -118,7 +118,7 @@
                         <i class="fas fa-eraser"></i> En Cero / Baja
                     </button>
                     <button id="btn-scan-inv" class="btn btn-secondary btn-sm"><i class="fas fa-camera"></i> Escanear</button>
-                    <button class="btn btn-primary btn-sm" id="btn-new-product"><i class="fas fa-plus"></i> Añadir</button>
+                    <button class="btn btn-primary btn-sm" id="btn-new-product"><i class="fas fa-plus"></i> AÃ±adir</button>
                 </div>
             </div>
             <div class="inventory-list" id="inventory-list">
@@ -126,9 +126,9 @@
             </div>
         </section>
 
-        <!-- Vista Configuración -->
+        <!-- Vista ConfiguraciÃ³n -->
         <section id="view-settings" class="view">
-            <h2 style="margin-bottom: 15px;">Configuración</h2>
+            <h2 style="margin-bottom: 15px;">ConfiguraciÃ³n</h2>
             <div class="card bg-neutral">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
                     <h3 style="margin:0;">Tasas de Cambio</h3>
@@ -145,14 +145,14 @@
                     <input type="number" id="rate-cop" step="0.01">
                 </div>
                 <div class="form-group">
-                    <label>Tasa VES (Bolívares - BCV Oficial)</label>
+                    <label>Tasa VES (BolÃ­vares - BCV Oficial)</label>
                     <input type="number" id="rate-ves" step="0.0001">
                     <div id="bcv-status-card" style="margin-top:8px; padding:10px 12px; background:#fff; border:1px solid #e0e0e0; border-radius:8px; font-size:12px; display:flex; flex-direction:column; gap:4px;">
                         <div style="display:flex; align-items:center; justify-content:space-between;">
                             <span style="font-weight:bold; color:var(--text-dark); display:flex; align-items:center; gap:6px;">
                                 <i class="fas fa-university" style="color:var(--accent-primary);"></i> Banco Central de Venezuela
                             </span>
-                            <span id="bcv-live-indicator" style="color:#2ecc71; font-weight:bold; font-size:11px;">● En línea</span>
+                            <span id="bcv-live-indicator" style="color:#2ecc71; font-weight:bold; font-size:11px;">â— En lÃ­nea</span>
                         </div>
                         <div id="bcv-date-badge" style="color:#666;">Fecha Valor: Sincronizando...</div>
                     </div>
@@ -160,13 +160,13 @@
                 <button class="btn btn-primary w-100" id="btn-save-rates">GUARDAR TASAS</button>
             </div>
 
-            <!-- Impresora Térmica PT-230 (58mm - Cable y Bluetooth) -->
+            <!-- Impresora TÃ©rmica PT-230 (58mm - Cable y Bluetooth) -->
             <div class="card bg-neutral" style="margin-top: 20px; border: 1px solid #ddd;">
                 <h3 style="margin-bottom: 8px; color: var(--text-dark); display:flex; align-items:center; gap:8px;">
-                    <i class="fas fa-print" style="color:var(--accent-primary);"></i> Impresora Térmica PT-230 (58mm)
+                    <i class="fas fa-print" style="color:var(--accent-primary);"></i> Impresora TÃ©rmica PT-230 (58mm)
                 </h3>
                 <p style="font-size: 13px; color: #555; margin-bottom: 12px; line-height: 1.4;">
-                    Optimizado para rollo térmico de <strong>58mm (48mm de impresión)</strong> sin espacio en blanco sobrante. Puedes imprimir por <strong>Cable USB</strong> o directo por <strong>Bluetooth</strong>:
+                    Optimizado para rollo tÃ©rmico de <strong>58mm (48mm de impresiÃ³n)</strong> sin espacio en blanco sobrante. Puedes imprimir por <strong>Cable USB</strong> o directo por <strong>Bluetooth</strong>:
                 </p>
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <button type="button" class="btn btn-primary btn-sm" id="btn-test-print-usb" style="display:flex; align-items:center; justify-content:center; gap:6px; padding:10px; font-weight:bold;">
@@ -178,7 +178,7 @@
                 </div>
             </div>
 
-            <!-- Gestión de Reinicio / Dejar en Cero -->
+            <!-- GestiÃ³n de Reinicio / Dejar en Cero -->
             <div class="card bg-neutral" style="margin-top: 20px; border: 1px solid rgba(227, 48, 38, 0.25);">
                 <h3 style="margin-bottom: 8px; color: var(--accent-secondary); display:flex; align-items:center; gap:8px;">
                     <i class="fas fa-broom"></i> Control de Inventario y Cuentas en Cero
@@ -226,7 +226,7 @@
             <form id="form-product">
                 <input type="hidden" id="prod-id">
                 <div class="form-group">
-                    <label>SKU (Código de Barra / Unidad)</label>
+                    <label>SKU (CÃ³digo de Barra / Unidad)</label>
                     <div style="display:flex; gap:8px;">
                         <input type="text" id="prod-sku" placeholder="Escanear o escribir..." required style="flex:1;">
                         <button type="button" class="btn" id="btn-scan-sku" style="background:var(--bg-header); color:var(--accent-primary); border:1px solid var(--accent-primary); padding:10px 14px; display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:bold; white-space:nowrap; border-radius:8px;">
@@ -236,10 +236,10 @@
                 </div>
                 <div style="display:flex; gap:10px;">
                     <div class="form-group" style="flex:2;">
-                        <label>Código de Caja (Opc.)</label>
+                        <label>CÃ³digo de Caja (Opc.)</label>
                         <div style="display:flex; gap:6px;">
                             <input type="text" id="prod-box-sku" placeholder="Opcional..." style="flex:1;">
-                            <button type="button" class="btn" id="btn-scan-box" style="background:var(--bg-header); color:var(--accent-primary); border:1px solid var(--accent-primary); padding:10px 14px; font-size:13px; font-weight:bold; border-radius:8px;" title="Escanear Código de Caja">
+                            <button type="button" class="btn" id="btn-scan-box" style="background:var(--bg-header); color:var(--accent-primary); border:1px solid var(--accent-primary); padding:10px 14px; font-size:13px; font-weight:bold; border-radius:8px;" title="Escanear CÃ³digo de Caja">
                                 <i class="fas fa-barcode"></i> Escanear
                             </button>
                         </div>
@@ -300,7 +300,7 @@
                 <div id="adjust-baja-options" style="display:none; background:#fff8f8; border:1px solid #f5c6cb; padding:10px 12px; border-radius:8px; margin-bottom:15px; font-size:12px; color:#721c24;">
                     <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; font-weight:normal; margin:0; color:#721c24;">
                         <input type="checkbox" id="adjust-reverse-cost" checked style="width:16px; height:16px; margin-top:2px;">
-                        <span><strong>Descontar también del Gasto en Balance:</strong> Reversa el costo de compra de estas unidades para que el Balance baje o quede en <strong>$0.00</strong>.</span>
+                        <span><strong>Descontar tambiÃ©n del Gasto en Balance:</strong> Reversa el costo de compra de estas unidades para que el Balance baje o quede en <strong>$0.00</strong>.</span>
                     </label>
                 </div>
                 <button type="submit" class="btn btn-primary w-100">APLICAR MOVIMIENTO</button>
@@ -316,24 +316,24 @@
                 <i class="fas fa-eraser" style="color:var(--accent-secondary);"></i> Dejar en Cero
             </h2>
             <p style="font-size: 13px; color: #666; margin-bottom: 18px; line-height: 1.4;">
-                Selecciona cómo deseas dar de baja al inventario o reiniciar las cuentas a <strong>$0.00</strong>:
+                Selecciona cÃ³mo deseas dar de baja al inventario o reiniciar las cuentas a <strong>$0.00</strong>:
             </p>
 
             <div style="display:flex; flex-direction:column; gap:12px;">
-                <!-- Opción 1: Dar de baja todo el stock (Stock = 0) y Balance = $0.00 -->
+                <!-- OpciÃ³n 1: Dar de baja todo el stock (Stock = 0) y Balance = $0.00 -->
                 <div style="background:var(--bg-neutral); padding:14px; border-radius:10px; border:1px solid #ddd;">
                     <div style="font-weight:bold; font-size:14px; color:var(--text-dark); margin-bottom:4px;">
                         1. Dar de Baja a Todo el Stock (Cantidades en 0)
                     </div>
                     <p style="font-size:12px; color:#666; margin-bottom:10px; line-height:1.35;">
-                        Pone el stock de todos los productos en <strong>0 unid.</strong> (conservando sus nombres, códigos y precios) y deja el Balance (Utilidad, Ventas y Gastos) en <strong>$0.00</strong>.
+                        Pone el stock de todos los productos en <strong>0 unid.</strong> (conservando sus nombres, cÃ³digos y precios) y deja el Balance (Utilidad, Ventas y Gastos) en <strong>$0.00</strong>.
                     </p>
                     <button type="button" class="btn btn-primary w-100" id="btn-zero-all-stock" style="font-size:13px; padding:10px; font-weight:bold;">
                         <i class="fas fa-box-open"></i> PONER STOCK EN 0 Y BALANCE EN $0.00
                     </button>
                 </div>
 
-                <!-- Opción 2: Eliminar todos los productos y dejar todo en cero -->
+                <!-- OpciÃ³n 2: Eliminar todos los productos y dejar todo en cero -->
                 <div style="background:#fff5f5; padding:14px; border-radius:10px; border:1px solid #f5c6cb;">
                     <div style="font-weight:bold; font-size:14px; color:var(--accent-secondary); margin-bottom:4px;">
                         2. Eliminar Todo el Inventario y Dejar Todo en Cero
@@ -346,7 +346,7 @@
                     </button>
                 </div>
 
-                <!-- Opción 3: Solo reiniciar Balance y Movimientos a $0.00 -->
+                <!-- OpciÃ³n 3: Solo reiniciar Balance y Movimientos a $0.00 -->
                 <div style="background:var(--bg-neutral); padding:14px; border-radius:10px; border:1px solid #ddd;">
                     <div style="font-weight:bold; font-size:14px; color:var(--text-dark); margin-bottom:4px;">
                         3. Solo Reiniciar Balance (Ventas y Gastos en $0.00)
@@ -369,7 +369,7 @@
             <h2 style="margin-bottom: 20px;">Registrar Gasto</h2>
             <form id="form-expense">
                 <div class="form-group">
-                    <label>Descripción del Gasto</label>
+                    <label>DescripciÃ³n del Gasto</label>
                     <input type="text" id="exp-desc" placeholder="Ej: Pago de Luz, Compra Varios..." required>
                 </div>
                 <div class="form-group">
@@ -381,12 +381,12 @@
         </div>
     </div>
 
-    <!-- Modal Escáner de Código -->
+    <!-- Modal EscÃ¡ner de CÃ³digo -->
     <div id="modal-scanner" class="modal no-print">
         <div class="modal-content" style="padding: 20px; max-width: 480px; width: 92%;">
             <span class="close-modal" onclick="closeScanner()">&times;</span>
-            <h2 style="margin-bottom: 6px;"><i class="fas fa-barcode"></i> Escanear Código</h2>
-            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Apunta tu cámara al código de barra / QR o sube una foto.</p>
+            <h2 style="margin-bottom: 6px;"><i class="fas fa-barcode"></i> Escanear CÃ³digo</h2>
+            <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Apunta tu cÃ¡mara al cÃ³digo de barra / QR o sube una foto.</p>
             
             <div id="scanner-error" style="display:none; background:#fff3cd; color:#856404; padding:12px; border-radius:8px; margin-bottom:15px; font-size:13px; line-height:1.4; border:1px solid #ffeeba;"></div>
 
@@ -408,7 +408,7 @@
         </div>
     </div>
 
-    <!-- Modal Finalización de Venta / Opciones de Factura -->
+    <!-- Modal FinalizaciÃ³n de Venta / Opciones de Factura -->
     <div id="modal-sale-complete" class="modal no-print-modal">
         <div class="modal-content" style="max-width: 480px; width: 95%; padding: 20px;">
             <div class="modal-sale-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
@@ -417,14 +417,14 @@
                         <i class="fas fa-check"></i>
                     </div>
                     <div>
-                        <h3 style="margin:0; font-size:17px; color:var(--text-dark);">¡Venta Procesada!</h3>
+                        <h3 style="margin:0; font-size:17px; color:var(--text-dark);">Â¡Venta Procesada!</h3>
                         <small id="sale-summary-badge" style="color:#666; font-size:12px; font-weight:bold;"></small>
                     </div>
                 </div>
                 <span class="close-modal" id="btn-close-sale-modal" data-modal="modal-sale-complete" style="position:static; font-size:24px;">&times;</span>
             </div>
 
-            <!-- Botones de Acción Principales -->
+            <!-- Botones de AcciÃ³n Principales -->
             <div class="modal-sale-actions" style="margin-bottom: 15px;">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                     <button type="button" class="btn btn-primary" id="btn-action-print" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px 8px; font-size:12px;">
@@ -454,19 +454,19 @@
                 </div>
             </div>
 
-            <!-- Campo Opcional: Teléfono de cliente para WhatsApp -->
+            <!-- Campo Opcional: TelÃ©fono de cliente para WhatsApp -->
             <div class="modal-sale-phone" style="background:#f8f9fa; border:1px solid #e9ecef; border-radius:8px; padding:10px; margin-bottom: 15px; text-align:left;">
                 <label style="font-size:12px; font-weight:bold; color:#555; display:block; margin-bottom:4px;">
                     <i class="fab fa-whatsapp" style="color:#25D366;"></i> WhatsApp del Cliente (Opcional):
                 </label>
-                <input type="tel" id="client-whatsapp-phone" placeholder="Ej: 04241234567 o dejar vacío..." style="width:100%; padding:8px 10px; font-size:13px; border:1px solid #ccc; border-radius:6px; outline:none; box-sizing:border-box;">
-                <small style="color:#888; font-size:11px; display:block; margin-top:3px;">Si lo dejas vacío, abrirá WhatsApp para que elijas el chat.</small>
+                <input type="tel" id="client-whatsapp-phone" placeholder="Ej: 04241234567 o dejar vacÃ­o..." style="width:100%; padding:8px 10px; font-size:13px; border:1px solid #ccc; border-radius:6px; outline:none; box-sizing:border-box;">
+                <small style="color:#888; font-size:11px; display:block; margin-top:3px;">Si lo dejas vacÃ­o, abrirÃ¡ WhatsApp para que elijas el chat.</small>
             </div>
 
             <!-- Vista Previa de la Factura -->
             <div style="text-align:left; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:12px; font-weight:bold; color:#777;">Vista previa de la factura:</span>
-                <span style="font-size:11px; color:#999;"><i class="fas fa-receipt"></i> Térmica 58mm (PT-230)</span>
+                <span style="font-size:11px; color:#999;"><i class="fas fa-receipt"></i> TÃ©rmica 58mm (PT-230)</span>
             </div>
 
             <div id="receipt-preview-wrapper" style="max-height: 280px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; padding: 12px; margin-bottom: 15px; display: flex; justify-content: center;">
@@ -519,8 +519,8 @@
                     </div>
 
                     <div class="receipt-footer">
-                        <p>¡Gracias por su compra y preferencia!</p>
-                        <small>Abasto La Comadrejaja • Siempre a su orden</small>
+                        <p>Â¡Gracias por su compra y preferencia!</p>
+                        <small>Abasto La Comadrejaja â€¢ Siempre a su orden</small>
                     </div>
                 </div>
 
@@ -534,13 +534,13 @@
         </div>
     </div>
 
-    <!-- Contenedor dedicado para impresión térmica 58mm (PT-230) -->
+    <!-- Contenedor dedicado para impresiÃ³n tÃ©rmica 58mm (PT-230) -->
     <div id="thermal-print-container"></div>
 
     <!-- Firebase SDK (Compat) para Navegador Vanilla JS -->
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
 
-    <script src="app.js?v=2.4"></script>
+    <script src="app.js?v=2.5"></script>
 </body>
 </html>

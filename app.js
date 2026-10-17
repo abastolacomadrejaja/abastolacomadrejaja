@@ -307,23 +307,80 @@ function renderBalance() {
         const amountColor = isSale ? 'text-green' : (isBaja ? 'text-green' : 'text-red');
         const sign = isSale ? '+' : (isBaja ? 'Reverso ' : '-');
         const dateStr = new Date(tx.date).toLocaleDateString('es-ES', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+        const isOpen = expandedTxIds.has(tx.id);
         
         feedList.innerHTML += `
-            <div class="feed-item">
-                <div class="feed-icon ${iconBg}"><i class="fas ${iconClass}"></i></div>
-                <div class="feed-details">
-                    <div class="feed-desc">${desc}</div>
-                    <div class="feed-date">${dateStr}</div>
+            <div class="feed-item feed-item-expandable ${isOpen ? 'open' : ''}" style="flex-direction:column; align-items:stretch; gap:0;">
+                <div style="display:flex; align-items:center; gap:15px; cursor:pointer;" onclick="toggleTxDetail('${tx.id}')">
+                    <div class="feed-icon ${iconBg}"><i class="fas ${iconClass}"></i></div>
+                    <div class="feed-details">
+                        <div class="feed-desc">${desc}</div>
+                        <div class="feed-date">${dateStr}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <div class="feed-amount ${amountColor}">${sign}${formatUSD(tx.total)}</div>
+                        <i class="fas fa-chevron-${isOpen ? 'up' : 'down'}" style="color:#999; font-size:12px; width:14px; text-align:center;"></i>
+                    </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div class="feed-amount ${amountColor}">${sign}${formatUSD(tx.total)}</div>
-                    <button type="button" onclick="deleteTransaction('${tx.id}')" title="Eliminar este movimiento" style="background:none; border:none; color:#aaa; cursor:pointer; font-size:14px; padding:4px;">
-                        <i class="fas fa-times"></i>
-                    </button>
+                <div class="feed-detail-panel" style="display:${isOpen ? 'block' : 'none'}; margin-top:12px; padding-top:12px; border-top:1px dashed #ccc; font-size:13px; color:#444;">
+                    ${buildTxDetailHtml(tx)}
                 </div>
             </div>
         `;
     });
+}
+
+const expandedTxIds = new Set();
+
+window.toggleTxDetail = (txId) => {
+    if (expandedTxIds.has(txId)) expandedTxIds.delete(txId);
+    else expandedTxIds.add(txId);
+    renderBalance();
+};
+
+function buildTxDetailHtml(tx) {
+    const isSale = tx.type === 'out';
+    const isBaja = tx.type === 'baja';
+    const typeLabel = isSale ? 'Venta (Entrada de dinero)' : (isBaja ? 'Reverso por baja de inventario' : 'Gasto / Compra (Salida de dinero)');
+    const fullDate = new Date(tx.date).toLocaleString('es-VE', { dateStyle: 'long', timeStyle: 'short' });
+    const vesRate = (tx.ratesAtTime && tx.ratesAtTime.ves) || data.settings.ves;
+    const copRate = (tx.ratesAtTime && tx.ratesAtTime.cop) || data.settings.cop;
+    const total = parseFloat(tx.total) || 0;
+
+    let itemsHtml = '';
+    if (tx.items && tx.items.length > 0) {
+        itemsHtml = '<div style="margin:8px 0 4px; font-weight:bold; color:#222;">Productos:</div>';
+        tx.items.forEach(item => {
+            const prod = data.products.find(p => p.id === item.productId);
+            const name = item.name || (prod ? prod.name : 'Producto eliminado');
+            const unit = parseFloat(item.priceAtTime) || 0;
+            itemsHtml += `
+                <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:3px;">
+                    <span>${item.qty} x ${name} <small style="color:#888;">(${formatUSD(unit)} c/u)</small></span>
+                    <strong>${formatUSD(unit * item.qty)}</strong>
+                </div>`;
+        });
+    } else {
+        itemsHtml = '<div style="margin:6px 0; color:#888;">Sin productos asociados (movimiento directo).</div>';
+    }
+
+    return `
+        <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Tipo:</span><strong>${typeLabel}</strong></div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Fecha:</span><strong>${fullDate}</strong></div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Referencia:</span><strong>${tx.id.split('-')[0].toUpperCase()}</strong></div>
+        ${itemsHtml}
+        <div style="border-top:1px solid #ddd; margin-top:8px; padding-top:6px;">
+            <div style="display:flex; justify-content:space-between;"><span>Total USD:</span><strong>${formatUSD(total)}</strong></div>
+            <div style="display:flex; justify-content:space-between;"><span>Equiv. COP:</span><span>${(total * copRate).toLocaleString('es-CO')} COP</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>Equiv. VES:</span><span>${(total * vesRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs</span></div>
+            <div style="display:flex; justify-content:space-between; color:#888; font-size:11px;"><span>Tasa BCV aplicada:</span><span>${Number(vesRate).toLocaleString('es-VE')} Bs</span></div>
+        </div>
+        <div style="text-align:right; margin-top:10px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="deleteTransaction('${tx.id}')" style="font-size:12px; padding:6px 10px;">
+                <i class="fas fa-trash" style="color:var(--accent-secondary);"></i> Eliminar movimiento
+            </button>
+        </div>
+    `;
 }
 
 window.deleteTransaction = (txId) => {
