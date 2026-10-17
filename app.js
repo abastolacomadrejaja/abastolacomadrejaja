@@ -83,7 +83,7 @@ function saveData(syncTarget = 'all') {
             });
         }
         if (syncTarget === 'all' || syncTarget === 'transactions') {
-            data.transactions.slice(-20).forEach(tx => {
+            data.transactions.forEach(tx => {
                 db.collection('transactions').doc(tx.id).set(tx).catch(e => console.warn("Firestore tx set error:", e));
             });
         }
@@ -221,7 +221,7 @@ function initFirestoreRealtime() {
         } else {
             if (!localStorage.getItem('cloud_tx_synced') && data.transactions.length > 0) {
                 localStorage.setItem('cloud_tx_synced', 'true');
-                data.transactions.slice(-20).forEach(tx => db.collection('transactions').doc(tx.id).set(tx));
+                data.transactions.forEach(tx => db.collection('transactions').doc(tx.id).set(tx));
             } else {
                 // Si se borraron las transacciones en la nube, dejar balance en cero
                 localStorage.setItem('cloud_tx_synced', 'true');
@@ -261,39 +261,297 @@ function initFirestoreRealtime() {
 // ==========================================
 // 4. Pantalla de Balance / Dashboard
 // ==========================================
+// ==========================================
+// 4. Pantalla de Balance / Dashboard & Historial Completo
+// ==========================================
+let historyFilter = {
+    type: 'all', // 'all', 'out', 'in'
+    period: 'all', // 'all', 'today', 'week', 'month', 'custom'
+    dateFrom: '',
+    dateTo: '',
+    search: '',
+    limit: 50
+};
+
+window.setHistoryTypeFilter = function(type) {
+    historyFilter.type = type;
+    historyFilter.limit = 50;
+
+    const pills = document.querySelectorAll('#pills-tx-type .filter-pill');
+    pills.forEach(p => p.classList.remove('active'));
+    const activePill = document.getElementById(`pill-type-${type}`);
+    if (activePill) activePill.classList.add('active');
+
+    renderBalance();
+};
+
+window.setHistoryPeriodFilter = function(period) {
+    historyFilter.period = period;
+    historyFilter.limit = 50;
+
+    const pills = document.querySelectorAll('#pills-tx-period .filter-pill');
+    pills.forEach(p => p.classList.remove('active'));
+    const activePill = document.getElementById(`pill-period-${period}`);
+    if (activePill) activePill.classList.add('active');
+
+    const customContainer = document.getElementById('history-custom-date-container');
+    if (period === 'custom') {
+        if (customContainer) customContainer.style.display = 'block';
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const fromInput = document.getElementById('history-date-from');
+        const toInput = document.getElementById('history-date-to');
+        if (fromInput && !fromInput.value) fromInput.value = todayStr;
+        if (toInput && !toInput.value) toInput.value = todayStr;
+        historyFilter.dateFrom = fromInput ? fromInput.value : '';
+        historyFilter.dateTo = toInput ? toInput.value : '';
+    } else {
+        if (customContainer) customContainer.style.display = 'none';
+    }
+
+    renderBalance();
+};
+
+window.applyCustomDateFilter = function() {
+    const fromVal = document.getElementById('history-date-from').value;
+    const toVal = document.getElementById('history-date-to').value;
+    if (!fromVal || !toVal) {
+        alert('Por favor selecciona las fechas "Desde" y "Hasta".');
+        return;
+    }
+    historyFilter.dateFrom = fromVal;
+    historyFilter.dateTo = toVal;
+    historyFilter.limit = 50;
+    renderBalance();
+};
+
+window.clearCustomDateFilter = function() {
+    const fromInput = document.getElementById('history-date-from');
+    const toInput = document.getElementById('history-date-to');
+    if (fromInput) fromInput.value = '';
+    if (toInput) toInput.value = '';
+    historyFilter.dateFrom = '';
+    historyFilter.dateTo = '';
+    setHistoryPeriodFilter('all');
+};
+
+window.clearHistorySearch = function() {
+    const input = document.getElementById('history-search');
+    if (input) input.value = '';
+    historyFilter.search = '';
+    const btnClear = document.getElementById('btn-clear-history-search');
+    if (btnClear) btnClear.style.display = 'none';
+    renderBalance();
+};
+
+window.loadMoreHistory = function() {
+    historyFilter.limit += 50;
+    renderBalance();
+};
+
+window.resetHistoryFilters = function() {
+    historyFilter.type = 'all';
+    historyFilter.period = 'all';
+    historyFilter.dateFrom = '';
+    historyFilter.dateTo = '';
+    historyFilter.search = '';
+    historyFilter.limit = 50;
+
+    const input = document.getElementById('history-search');
+    if (input) input.value = '';
+    const btnClear = document.getElementById('btn-clear-history-search');
+    if (btnClear) btnClear.style.display = 'none';
+
+    const customContainer = document.getElementById('history-custom-date-container');
+    if (customContainer) customContainer.style.display = 'none';
+
+    document.querySelectorAll('#pills-tx-type .filter-pill').forEach(p => p.classList.remove('active'));
+    document.getElementById('pill-type-all')?.classList.add('active');
+
+    document.querySelectorAll('#pills-tx-period .filter-pill').forEach(p => p.classList.remove('active'));
+    document.getElementById('pill-period-all')?.classList.add('active');
+
+    renderBalance();
+};
+
+let historySearchAttached = false;
+function attachHistorySearchListener() {
+    if (historySearchAttached) return;
+    const input = document.getElementById('history-search');
+    if (input) {
+        historySearchAttached = true;
+        input.addEventListener('input', (e) => {
+            historyFilter.search = e.target.value.trim();
+            historyFilter.limit = 50;
+            const btnClear = document.getElementById('btn-clear-history-search');
+            if (btnClear) btnClear.style.display = historyFilter.search ? 'block' : 'none';
+            renderBalance();
+        });
+    }
+}
+
 function renderBalance() {
-    let sales = 0;
-    let expenses = 0;
-    
+    attachHistorySearchListener();
+
+    // 1. Totales Generales Globales (Dashboard principal)
+    let globalSales = 0;
+    let globalExpenses = 0;
+    let totalSalesCount = 0;
+    let totalExpensesCount = 0;
+
     data.transactions.forEach(tx => {
         const amount = parseFloat(tx.total) || 0;
-        if (tx.type === 'out') sales += amount; // Ventas = Entrada de dinero
-        else if (tx.type === 'in') expenses += amount; // Compras/Gastos = Salida de dinero
-        else if (tx.type === 'baja') expenses -= amount; // Baja de inventario reversa el gasto
+        if (tx.type === 'out') {
+            globalSales += amount;
+            totalSalesCount++;
+        } else if (tx.type === 'in') {
+            globalExpenses += amount;
+            totalExpensesCount++;
+        } else if (tx.type === 'baja') {
+            globalExpenses -= amount;
+            totalExpensesCount++;
+        }
     });
-    
-    if (sales < 0) sales = 0;
-    if (expenses < 0) expenses = 0;
 
-    // Redondear para evitar residuos decimales (-0.00)
-    sales = Math.round(sales * 100) / 100;
-    expenses = Math.round(expenses * 100) / 100;
-    const profit = Math.round((sales - expenses) * 100) / 100;
+    if (globalSales < 0) globalSales = 0;
+    if (globalExpenses < 0) globalExpenses = 0;
+    globalSales = Math.round(globalSales * 100) / 100;
+    globalExpenses = Math.round(globalExpenses * 100) / 100;
+    const globalProfit = Math.round((globalSales - globalExpenses) * 100) / 100;
 
-    document.getElementById('dash-profit').innerText = formatUSD(Object.is(profit, -0) ? 0 : profit);
-    document.getElementById('dash-sales').innerText = formatUSD(sales);
-    document.getElementById('dash-expenses').innerText = formatUSD(expenses);
-    
-    // Renderizar Lista de Transacciones (Feed)
-    const feedList = document.getElementById('feed-list');
-    feedList.innerHTML = '';
-    const recent = [...data.transactions].sort((a, b) => b.date - a.date).slice(0, 20);
-    
-    if(recent.length === 0) {
-        feedList.innerHTML = '<p style="text-align:center; color:#888;">No hay movimientos registrados</p>';
+    const dashProfit = document.getElementById('dash-profit');
+    const dashSales = document.getElementById('dash-sales');
+    const dashExpenses = document.getElementById('dash-expenses');
+    if (dashProfit) dashProfit.innerText = formatUSD(Object.is(globalProfit, -0) ? 0 : globalProfit);
+    if (dashSales) dashSales.innerText = formatUSD(globalSales);
+    if (dashExpenses) dashExpenses.innerText = formatUSD(globalExpenses);
+
+    // 2. Insignias numéricas en los botones de tipo
+    const badgeAll = document.getElementById('badge-count-all');
+    const badgeSales = document.getElementById('badge-count-sales');
+    const badgeExpenses = document.getElementById('badge-count-expenses');
+    if (badgeAll) badgeAll.innerText = data.transactions.length;
+    if (badgeSales) badgeSales.innerText = totalSalesCount;
+    if (badgeExpenses) badgeExpenses.innerText = totalExpensesCount;
+
+    // 3. Filtrar transacciones para el Historial según los filtros seleccionados
+    const now = new Date();
+    let filteredTxs = [...data.transactions];
+
+    // Filtro por tipo de movimiento
+    if (historyFilter.type === 'out') {
+        filteredTxs = filteredTxs.filter(t => t.type === 'out');
+    } else if (historyFilter.type === 'in') {
+        filteredTxs = filteredTxs.filter(t => t.type === 'in' || t.type === 'baja');
     }
-    
-    recent.forEach(tx => {
+
+    // Filtro por período de tiempo
+    let periodLabel = 'Todo';
+    if (historyFilter.period === 'today') {
+        periodLabel = 'Hoy';
+        const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+        const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).getTime();
+        filteredTxs = filteredTxs.filter(t => t.date >= startToday && t.date <= endToday);
+    } else if (historyFilter.period === 'week') {
+        periodLabel = 'Esta Semana';
+        const day = now.getDay();
+        const diff = (day === 0 ? -6 : 1) - day;
+        const startWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diff, 0, 0, 0, 0).getTime();
+        const endWeek = startWeek + (7 * 24 * 60 * 60 * 1000) - 1;
+        filteredTxs = filteredTxs.filter(t => t.date >= startWeek && t.date <= endWeek);
+    } else if (historyFilter.period === 'month') {
+        periodLabel = 'Este Mes';
+        const startMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).getTime();
+        const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).getTime();
+        filteredTxs = filteredTxs.filter(t => t.date >= startMonth && t.date <= endMonth);
+    } else if (historyFilter.period === 'custom') {
+        periodLabel = 'Personalizado';
+        if (historyFilter.dateFrom) {
+            const [y1, m1, d1] = historyFilter.dateFrom.split('-').map(Number);
+            const fromMs = new Date(y1, m1 - 1, d1, 0, 0, 0, 0).getTime();
+            filteredTxs = filteredTxs.filter(t => t.date >= fromMs);
+        }
+        if (historyFilter.dateTo) {
+            const [y2, m2, d2] = historyFilter.dateTo.split('-').map(Number);
+            const toMs = new Date(y2, m2 - 1, d2, 23, 59, 59, 999).getTime();
+            filteredTxs = filteredTxs.filter(t => t.date <= toMs);
+        }
+    }
+
+    // Filtro por búsqueda de texto
+    if (historyFilter.search) {
+        const q = normalizeSearchText(historyFilter.search);
+        filteredTxs = filteredTxs.filter(t => {
+            if (t.id && t.id.toLowerCase().includes(q)) return true;
+            if (t.desc && normalizeSearchText(t.desc).includes(q)) return true;
+            if (t.items && t.items.some(it => {
+                const prod = data.products.find(p => p.id === it.productId);
+                const name = it.name || (prod ? prod.name : '');
+                return normalizeSearchText(name).includes(q);
+            })) return true;
+            return false;
+        });
+    }
+
+    // Ordenar cronológicamente (más recientes primero)
+    filteredTxs.sort((a, b) => b.date - a.date);
+
+    // 4. Calcular Sub-totales del Filtro Activo
+    let filterSales = 0;
+    let filterExpenses = 0;
+    filteredTxs.forEach(tx => {
+        const amount = parseFloat(tx.total) || 0;
+        if (tx.type === 'out') filterSales += amount;
+        else if (tx.type === 'in') filterExpenses += amount;
+        else if (tx.type === 'baja') filterExpenses -= amount;
+    });
+    if (filterSales < 0) filterSales = 0;
+    if (filterExpenses < 0) filterExpenses = 0;
+    filterSales = Math.round(filterSales * 100) / 100;
+    filterExpenses = Math.round(filterExpenses * 100) / 100;
+    const filterProfit = Math.round((filterSales - filterExpenses) * 100) / 100;
+
+    const summaryTitle = document.getElementById('history-summary-title');
+    const summaryProfit = document.getElementById('history-summary-profit');
+    const summarySales = document.getElementById('history-summary-sales');
+    const summaryExpenses = document.getElementById('history-summary-expenses');
+    const summaryCount = document.getElementById('history-summary-count');
+    const filterIndicator = document.getElementById('history-filter-indicator');
+
+    if (summaryTitle) summaryTitle.innerText = `Balance Filtrado (${periodLabel})`;
+    if (summaryProfit) {
+        summaryProfit.innerText = formatUSD(Object.is(filterProfit, -0) ? 0 : filterProfit);
+        summaryProfit.className = filterProfit >= 0 ? 'text-green' : 'text-red';
+    }
+    if (summarySales) summarySales.innerText = formatUSD(filterSales);
+    if (summaryExpenses) summaryExpenses.innerText = formatUSD(filterExpenses);
+    if (summaryCount) summaryCount.innerText = filteredTxs.length;
+
+    if (filterIndicator) {
+        const typeStr = historyFilter.type === 'all' ? 'todos los movimientos' : (historyFilter.type === 'out' ? 'solo ventas' : 'gastos y compras');
+        filterIndicator.innerText = `Mostrando ${filteredTxs.length} movimiento(s) • ${typeStr} • Período: ${periodLabel}`;
+    }
+
+    // 5. Renderizar lista en feedList
+    const feedList = document.getElementById('feed-list');
+    if (!feedList) return;
+    feedList.innerHTML = '';
+
+    if (filteredTxs.length === 0) {
+        feedList.innerHTML = `
+            <div style="text-align:center; padding:30px 15px; background:var(--bg-neutral); border-radius:12px; margin-top:5px;">
+                <i class="fas fa-search" style="font-size:32px; color:#bbb; margin-bottom:10px;"></i>
+                <p style="color:#666; font-size:14px; margin-bottom:12px;">No se encontraron movimientos para el filtro seleccionado.</p>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="resetHistoryFilters()" style="padding:6px 14px; font-weight:bold;">
+                    <i class="fas fa-undo"></i> Restablecer Filtros
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    const itemsToDisplay = filteredTxs.slice(0, historyFilter.limit);
+
+    itemsToDisplay.forEach(tx => {
         const isSale = tx.type === 'out';
         const isBaja = tx.type === 'baja';
         const iconClass = isSale ? 'fa-arrow-down' : (isBaja ? 'fa-undo' : 'fa-arrow-up');
@@ -328,6 +586,17 @@ function renderBalance() {
             </div>
         `;
     });
+
+    if (filteredTxs.length > historyFilter.limit) {
+        const remaining = filteredTxs.length - historyFilter.limit;
+        feedList.innerHTML += `
+            <div style="text-align:center; margin-top:10px;">
+                <button type="button" class="btn btn-secondary w-100" onclick="loadMoreHistory()" style="padding:12px; font-weight:bold; font-size:13px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; gap:8px;">
+                    <i class="fas fa-chevron-down"></i> Mostrar más movimientos (+${remaining} restantes)
+                </button>
+            </div>
+        `;
+    }
 }
 
 const expandedTxIds = new Set();
@@ -352,7 +621,7 @@ function buildTxDetailHtml(tx) {
         itemsHtml = '<div style="margin:8px 0 4px; font-weight:bold; color:#222;">Productos:</div>';
         tx.items.forEach(item => {
             const prod = data.products.find(p => p.id === item.productId);
-            const name = item.name || (prod ? prod.name : 'Producto eliminado');
+            const name = item.name || (prod ? prod.name : 'Producto');
             const unit = parseFloat(item.priceAtTime) || 0;
             itemsHtml += `
                 <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:3px;">
@@ -367,7 +636,7 @@ function buildTxDetailHtml(tx) {
     return `
         <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Tipo:</span><strong>${typeLabel}</strong></div>
         <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Fecha:</span><strong>${fullDate}</strong></div>
-        <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Referencia:</span><strong>${tx.id.split('-')[0].toUpperCase()}</strong></div>
+        <div style="display:flex; justify-content:space-between; margin-bottom:3px;"><span>Referencia:</span><strong>${tx.id ? tx.id.split('-')[0].toUpperCase() : 'N/A'}</strong></div>
         ${itemsHtml}
         <div style="border-top:1px solid #ddd; margin-top:8px; padding-top:6px;">
             <div style="display:flex; justify-content:space-between;"><span>Total USD:</span><strong>${formatUSD(total)}</strong></div>
@@ -384,12 +653,35 @@ function buildTxDetailHtml(tx) {
 }
 
 window.deleteTransaction = (txId) => {
-    if (confirm('¿Deseas eliminar este movimiento del historial y recalcular el balance?')) {
+    const tx = data.transactions.find(t => t.id === txId);
+    if (!tx) return;
+
+    const isSale = tx.type === 'out';
+    const txRef = tx.id ? tx.id.split('-')[0].toUpperCase() : '';
+    let confirmMsg = `¿Deseas eliminar este movimiento (Ref: ${txRef}) del historial y recalcular el balance?`;
+    if (isSale) {
+        confirmMsg = `¿Deseas eliminar esta Venta (Ref: ${txRef} - ${formatUSD(tx.total)}) del historial?\n\n• El total de ${formatUSD(tx.total)} se restará de las ventas.\n• Se devolverán los productos vendidos al inventario para que el stock físico quede exacto.\n\n¿Confirmas eliminar esta venta?`;
+    }
+
+    if (confirm(confirmMsg)) {
+        if (isSale && tx.items && tx.items.length > 0) {
+            tx.items.forEach(it => {
+                const prod = data.products.find(p => p.id === it.productId);
+                if (prod) {
+                    prod.stock += (parseInt(it.qty) || 1);
+                    if (db) db.collection('products').doc(prod.id).update({ stock: prod.stock }).catch(e => console.warn(e));
+                }
+            });
+            saveData('products');
+        }
+
+        expandedTxIds.delete(txId);
         localStorage.setItem('cloud_tx_synced', 'true');
         data.transactions = data.transactions.filter(t => t.id !== txId);
         if (db) db.collection('transactions').doc(txId).delete().catch(e => console.warn(e));
         localStorage.setItem('transactions', JSON.stringify(data.transactions));
         updateViews();
+        alert('✅ Movimiento eliminado exitosamente y balance recalculado.');
     }
 };
 
@@ -2027,3 +2319,276 @@ function handleBarcode(barcode, context) {
     }
     return true;
 }
+
+// ==========================================
+// Módulo: Exportación y Respaldo en Excel (.xlsx)
+// ==========================================
+function fitColsWidth(ws, rows) {
+    if (!rows || rows.length === 0) return;
+    const colWidths = {};
+    const keys = Object.keys(rows[0]);
+    keys.forEach(k => {
+        colWidths[k] = Math.max(k.length, 12);
+    });
+    rows.forEach(row => {
+        keys.forEach(k => {
+            const valStr = row[k] != null ? String(row[k]) : '';
+            colWidths[k] = Math.max(colWidths[k], Math.min(valStr.length, 55));
+        });
+    });
+    ws['!cols'] = keys.map(k => ({ wch: colWidths[k] + 3 }));
+}
+
+window.exportBackupToExcel = function() {
+    if (typeof XLSX === 'undefined') {
+        alert('⚠️ La herramienta de exportación a Excel aún se está cargando o no se encuentra disponible. Por favor verifica tu conexión y recarga la página.');
+        return;
+    }
+
+    try {
+        const wb = XLSX.utils.book_new();
+
+        // ----------------------------------------------------
+        // 1. Hoja 1: Resumen de Balance y Negocio
+        // ----------------------------------------------------
+        let totalSales = 0;
+        let totalExpenses = 0;
+        data.transactions.forEach(tx => {
+            const amount = parseFloat(tx.total) || 0;
+            if (tx.type === 'out') totalSales += amount;
+            else if (tx.type === 'in') totalExpenses += amount;
+            else if (tx.type === 'baja') totalExpenses -= amount;
+        });
+        if (totalSales < 0) totalSales = 0;
+        if (totalExpenses < 0) totalExpenses = 0;
+        totalSales = Math.round(totalSales * 100) / 100;
+        totalExpenses = Math.round(totalExpenses * 100) / 100;
+        const netProfit = Math.round((totalSales - totalExpenses) * 100) / 100;
+
+        let totalStockUnits = 0;
+        let totalCostValuation = 0;
+        let totalRetailValuation = 0;
+
+        data.products.forEach(p => {
+            const stock = parseFloat(p.stock) || 0;
+            const cost = parseFloat(p.cost) || 0;
+            const price = parseFloat(p.basePrice) || 0;
+            totalStockUnits += stock;
+            totalCostValuation += stock * cost;
+            totalRetailValuation += stock * price;
+        });
+        totalCostValuation = Math.round(totalCostValuation * 100) / 100;
+        totalRetailValuation = Math.round(totalRetailValuation * 100) / 100;
+        const totalProjectedProfit = Math.round((totalRetailValuation - totalCostValuation) * 100) / 100;
+
+        const totalSalesCount = data.transactions.filter(t => t.type === 'out').length;
+        const totalExpensesCount = data.transactions.filter(t => t.type === 'in' || t.type === 'baja').length;
+
+        const resumenRows = [
+            { "Concepto / Métrica": "NEGOCIO", "Valor": "Abastos La Comadrejaja", "Unidad / Moneda": "" },
+            { "Concepto / Métrica": "Fecha y Hora del Respaldo", "Valor": new Date().toLocaleString('es-VE'), "Unidad / Moneda": "" },
+            { "Concepto / Métrica": "----------------------------------------", "Valor": "----------------------------------------", "Unidad / Moneda": "--------------" },
+            { "Concepto / Métrica": "Utilidad Neta Total", "Valor": netProfit, "Unidad / Moneda": "USD ($)" },
+            { "Concepto / Métrica": "Ventas Totales Realizadas", "Valor": totalSales, "Unidad / Moneda": "USD ($)" },
+            { "Concepto / Métrica": "Gastos y Compras Totales", "Valor": totalExpenses, "Unidad / Moneda": "USD ($)" },
+            { "Concepto / Métrica": "Total de Facturas Emitidas (Ventas)", "Valor": totalSalesCount, "Unidad / Moneda": "Transacciones" },
+            { "Concepto / Métrica": "Total de Compras y Gastos Registrados", "Valor": totalExpensesCount, "Unidad / Moneda": "Transacciones" },
+            { "Concepto / Métrica": "----------------------------------------", "Valor": "----------------------------------------", "Unidad / Moneda": "--------------" },
+            { "Concepto / Métrica": "Variedad de Productos en Catálogo", "Valor": data.products.length, "Unidad / Moneda": "Productos" },
+            { "Concepto / Métrica": "Total de Unidades Físicas en Stock", "Valor": totalStockUnits, "Unidad / Moneda": "Unidades" },
+            { "Concepto / Métrica": "Valorización Inventario al Costo", "Valor": totalCostValuation, "Unidad / Moneda": "USD ($)" },
+            { "Concepto / Métrica": "Valorización Inventario a Precio de Venta", "Valor": totalRetailValuation, "Unidad / Moneda": "USD ($)" },
+            { "Concepto / Métrica": "Ganancia Potencial Estimada del Stock", "Valor": totalProjectedProfit, "Unidad / Moneda": "USD ($)" },
+            { "Concepto / Métrica": "----------------------------------------", "Valor": "----------------------------------------", "Unidad / Moneda": "--------------" },
+            { "Concepto / Métrica": "Tasa Oficial BCV Registrada", "Valor": data.settings.ves || 0, "Unidad / Moneda": "VES (Bs.) / USD" },
+            { "Concepto / Métrica": "Fecha Valor Tasa BCV", "Valor": data.settings.bcvFechaValor || "N/A", "Unidad / Moneda": "" },
+            { "Concepto / Métrica": "Tasa de Cambio COP Registrada", "Valor": data.settings.cop || 0, "Unidad / Moneda": "COP / USD" }
+        ];
+
+        const wsResumen = XLSX.utils.json_to_sheet(resumenRows);
+        fitColsWidth(wsResumen, resumenRows);
+        XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen Balance");
+
+        // ----------------------------------------------------
+        // 2. Hoja 2: Inventario de Productos
+        // ----------------------------------------------------
+        let inventarioRows = [];
+        if (data.products && data.products.length > 0) {
+            inventarioRows = data.products.map((p, idx) => {
+                const stock = parseFloat(p.stock) || 0;
+                const cost = parseFloat(p.cost) || 0;
+                const price = parseFloat(p.basePrice) || 0;
+                const unitProfit = Math.round((price - cost) * 100) / 100;
+                const marginPct = cost > 0 ? Math.round(((price - cost) / cost) * 1000) / 10 : 0;
+                const totalCost = Math.round((stock * cost) * 100) / 100;
+                const totalRetail = Math.round((stock * price) * 100) / 100;
+                const totalProfit = Math.round((totalRetail - totalCost) * 100) / 100;
+                const priceCop = Math.round(price * (data.settings.cop || 0));
+                const priceVes = Math.round(price * (data.settings.ves || 0) * 100) / 100;
+
+                return {
+                    "N°": idx + 1,
+                    "Código / SKU": p.sku || "",
+                    "Código Barra Caja": p.boxSku || "",
+                    "Unid. x Caja": p.unitsPerBox || 1,
+                    "Nombre del Producto": p.name || "",
+                    "Stock Actual": stock,
+                    "Costo Unitario ($)": cost,
+                    "Precio Venta ($)": price,
+                    "Ganancia Unitaria ($)": unitProfit,
+                    "Margen (%)": `${marginPct}%`,
+                    "Total al Costo ($)": totalCost,
+                    "Total a Venta ($)": totalRetail,
+                    "Ganancia Proyectada ($)": totalProfit,
+                    "Precio COP": priceCop,
+                    "Precio VES (BCV)": priceVes
+                };
+            });
+        } else {
+            inventarioRows = [{
+                "Aviso": "No hay productos registrados en el inventario actual."
+            }];
+        }
+
+        const wsInventario = XLSX.utils.json_to_sheet(inventarioRows);
+        fitColsWidth(wsInventario, inventarioRows);
+        XLSX.utils.book_append_sheet(wb, wsInventario, "Inventario");
+
+        // ----------------------------------------------------
+        // 3. Hoja 3: Historial de Ventas
+        // ----------------------------------------------------
+        const salesTxs = [...data.transactions]
+            .filter(t => t.type === 'out')
+            .sort((a, b) => b.date - a.date);
+
+        let ventasRows = [];
+        if (salesTxs.length > 0) {
+            ventasRows = salesTxs.map((tx, idx) => {
+                const totalUSD = parseFloat(tx.total) || 0;
+                const copRate = (tx.ratesAtTime && tx.ratesAtTime.cop) || data.settings.cop || 0;
+                const vesRate = (tx.ratesAtTime && tx.ratesAtTime.ves) || data.settings.ves || 0;
+                const totalCOP = Math.round(totalUSD * copRate);
+                const totalVES = Math.round(totalUSD * vesRate * 100) / 100;
+                const d = new Date(tx.date);
+                const dateStr = !isNaN(d) ? d.toLocaleDateString('es-VE') : '';
+                const timeStr = !isNaN(d) ? d.toLocaleTimeString('es-VE') : '';
+
+                let itemsDetail = '';
+                let totalItemsCount = 0;
+                if (tx.items && tx.items.length > 0) {
+                    itemsDetail = tx.items.map(it => {
+                        const prod = data.products.find(p => p.id === it.productId);
+                        const name = it.name || (prod ? prod.name : 'Producto');
+                        const qty = it.qty || 1;
+                        totalItemsCount += qty;
+                        const unit = parseFloat(it.priceAtTime) || 0;
+                        return `${qty}x ${name} ($${unit.toFixed(2)})`;
+                    }).join(' | ');
+                } else {
+                    itemsDetail = tx.desc || 'Venta directa';
+                }
+
+                return {
+                    "N°": idx + 1,
+                    "Ref. Factura": tx.id ? tx.id.split('-')[0].toUpperCase() : "",
+                    "Fecha": dateStr,
+                    "Hora": timeStr,
+                    "Total USD ($)": totalUSD,
+                    "Total COP": totalCOP,
+                    "Total VES (Bs)": totalVES,
+                    "Tasa BCV Aplicada": vesRate,
+                    "Tasa COP Aplicada": copRate,
+                    "Cant. Unidades": totalItemsCount,
+                    "Detalle de Productos": itemsDetail,
+                    "ID Transacción": tx.id || ""
+                };
+            });
+        } else {
+            ventasRows = [{
+                "Aviso": "No hay ventas registradas en el historial actual."
+            }];
+        }
+
+        const wsVentas = XLSX.utils.json_to_sheet(ventasRows);
+        fitColsWidth(wsVentas, ventasRows);
+        XLSX.utils.book_append_sheet(wb, wsVentas, "Ventas");
+
+        // ----------------------------------------------------
+        // 4. Hoja 4: Gastos, Compras y Mermas
+        // ----------------------------------------------------
+        const expenseTxs = [...data.transactions]
+            .filter(t => t.type === 'in' || t.type === 'baja')
+            .sort((a, b) => b.date - a.date);
+
+        let gastosRows = [];
+        if (expenseTxs.length > 0) {
+            gastosRows = expenseTxs.map((tx, idx) => {
+                const totalUSD = parseFloat(tx.total) || 0;
+                const isBaja = tx.type === 'baja';
+                const d = new Date(tx.date);
+                const dateStr = !isNaN(d) ? d.toLocaleDateString('es-VE') : '';
+                const timeStr = !isNaN(d) ? d.toLocaleTimeString('es-VE') : '';
+
+                let tipoMovimiento = "Gasto General";
+                if (isBaja) {
+                    tipoMovimiento = "Reverso Baja Inventario";
+                } else if (tx.desc && tx.desc.toLowerCase().startsWith('compra inv')) {
+                    tipoMovimiento = "Compra de Inventario";
+                } else if (tx.desc && tx.desc.toLowerCase().startsWith('entrada inicial')) {
+                    tipoMovimiento = "Entrada Inicial Inventario";
+                }
+
+                let itemsDetail = '';
+                if (tx.items && tx.items.length > 0) {
+                    itemsDetail = tx.items.map(it => {
+                        const prod = data.products.find(p => p.id === it.productId);
+                        const name = it.name || (prod ? prod.name : 'Producto');
+                        const qty = it.qty || 1;
+                        const unit = parseFloat(it.priceAtTime) || 0;
+                        return `${qty}x ${name} ($${unit.toFixed(2)})`;
+                    }).join(' | ');
+                } else {
+                    itemsDetail = tx.desc || '';
+                }
+
+                return {
+                    "N°": idx + 1,
+                    "Referencia": tx.id ? tx.id.split('-')[0].toUpperCase() : "",
+                    "Fecha": dateStr,
+                    "Hora": timeStr,
+                    "Tipo de Movimiento": tipoMovimiento,
+                    "Descripción": tx.desc || "",
+                    "Monto USD ($)": isBaja ? -totalUSD : totalUSD,
+                    "Productos Asociados": itemsDetail,
+                    "ID Transacción": tx.id || ""
+                };
+            });
+        } else {
+            gastosRows = [{
+                "Aviso": "No hay gastos ni compras registradas en el historial actual."
+            }];
+        }
+
+        const wsGastos = XLSX.utils.json_to_sheet(gastosRows);
+        fitColsWidth(wsGastos, gastosRows);
+        XLSX.utils.book_append_sheet(wb, wsGastos, "Gastos y Compras");
+
+        // ----------------------------------------------------
+        // Descarga del archivo .xlsx
+        // ----------------------------------------------------
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const mins = String(now.getMinutes()).padStart(2, '0');
+        const fileName = `Respaldo_La_Comadrejaja_${year}-${month}-${day}_${hours}${mins}.xlsx`;
+
+        XLSX.writeFile(wb, fileName);
+
+        alert(`✅ Respaldo descargado exitosamente:\n\n📁 ${fileName}\n\nIncluye 4 hojas organizadas:\n• Resumen Balance\n• Inventario (${data.products.length} productos)\n• Ventas (${salesTxs.length} facturas)\n• Gastos y Compras (${expenseTxs.length} movimientos)`);
+    } catch (err) {
+        console.error("Error al exportar respaldo a Excel:", err);
+        alert(`❌ Ocurrió un error al generar el archivo Excel:\n${err.message || err}`);
+    }
+};

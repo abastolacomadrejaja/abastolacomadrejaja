@@ -187,6 +187,90 @@ body {
 .feed-date { font-size: 12px; color: #888; }
 .feed-amount { font-weight: bold; font-size: 17px; }
 
+/* History Filters & Dashboard Controls */
+.history-filter-panel {
+    background-color: var(--bg-neutral);
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.filter-pills {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.filter-pill {
+    background: #ffffff;
+    border: 1px solid #dcdcdc;
+    color: #444444;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.filter-pill:hover {
+    background: #f0f0f0;
+    border-color: #bbb;
+}
+
+.filter-pill.active {
+    background: var(--bg-header);
+    color: var(--accent-primary);
+    border-color: var(--bg-header);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
+.filter-pill.pill-sales.active {
+    background: #217346;
+    color: #ffffff;
+    border-color: #217346;
+}
+
+.filter-pill.pill-expenses.active {
+    background: var(--accent-secondary);
+    color: #ffffff;
+    border-color: var(--accent-secondary);
+}
+
+.pill-badge {
+    background: rgba(0,0,0,0.08);
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.filter-pill.active .pill-badge {
+    background: rgba(255,255,255,0.22);
+    color: inherit;
+}
+
+.history-summary-card {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 15px;
+    border-left: 4px solid var(--accent-primary);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 /* Fixed Action Buttons Container */
 .action-buttons-container {
     position: fixed;

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>La Comadrejaja</title>
-    <link rel="stylesheet" href="styles.css?v=2.6">
+    <link rel="stylesheet" href="styles.css?v=2.8">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- HTML5 QR Code -->
@@ -14,6 +14,13 @@
     <script>
         if (typeof html2canvas === 'undefined') {
             document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>');
+        }
+    </script>
+    <!-- SheetJS (xlsx) para exportar respaldos a Excel -->
+    <script src="xlsx.full.min.js"></script>
+    <script>
+        if (typeof XLSX === 'undefined') {
+            document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\/script>');
         }
     </script>
     <!-- Tema PWA -->
@@ -58,12 +65,105 @@
                 </div>
             </div>
             
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                <h3 class="section-title" style="margin-bottom:0;">Últimos Movimientos</h3>
-                <button type="button" class="btn btn-secondary btn-sm" onclick="openResetZeroModal()" style="font-size:12px; padding:6px 10px; display:inline-flex; align-items:center; gap:5px;">
-                    <i class="fas fa-eraser" style="color:var(--accent-secondary);"></i> Dejar en Cero
-                </button>
+            <!-- Cabecera de Historial y Botones de Acción -->
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+                <div>
+                    <h3 class="section-title" style="margin-bottom:2px;">Historial de Movimientos</h3>
+                    <small id="history-filter-indicator" style="color:#666; font-size:11px; font-weight:600;">Cargando historial...</small>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-sm" onclick="exportBackupToExcel()" style="font-size:12px; padding:6px 10px; display:inline-flex; align-items:center; gap:5px; background:#217346; color:#fff; border:none; border-radius:6px; font-weight:bold;" title="Descargar Respaldo Completo en Excel">
+                        <i class="fas fa-file-excel"></i> Respaldo Excel
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="openResetZeroModal()" style="font-size:12px; padding:6px 10px; display:inline-flex; align-items:center; gap:5px;">
+                        <i class="fas fa-eraser" style="color:var(--accent-secondary);"></i> Dejar en Cero
+                    </button>
+                </div>
             </div>
+
+            <!-- Panel de Filtros del Historial -->
+            <div class="history-filter-panel">
+                <!-- 1. Filtro por Tipo de Movimiento -->
+                <div style="margin-bottom:10px;">
+                    <div style="font-size:11px; font-weight:bold; color:#777; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Tipo de Movimiento:</div>
+                    <div class="filter-pills" id="pills-tx-type">
+                        <button type="button" class="filter-pill active" id="pill-type-all" onclick="setHistoryTypeFilter('all')">
+                            <i class="fas fa-list"></i> Todos <span class="pill-badge" id="badge-count-all">0</span>
+                        </button>
+                        <button type="button" class="filter-pill pill-sales" id="pill-type-out" onclick="setHistoryTypeFilter('out')">
+                            <i class="fas fa-arrow-down"></i> Solo Ventas <span class="pill-badge" id="badge-count-sales">0</span>
+                        </button>
+                        <button type="button" class="filter-pill pill-expenses" id="pill-type-in" onclick="setHistoryTypeFilter('in')">
+                            <i class="fas fa-arrow-up"></i> Gastos y Compras <span class="pill-badge" id="badge-count-expenses">0</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Filtro por Período de Tiempo -->
+                <div style="margin-bottom:10px;">
+                    <div style="font-size:11px; font-weight:bold; color:#777; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Período:</div>
+                    <div class="filter-pills" id="pills-tx-period">
+                        <button type="button" class="filter-pill active" id="pill-period-all" onclick="setHistoryPeriodFilter('all')">
+                            Todo
+                        </button>
+                        <button type="button" class="filter-pill" id="pill-period-today" onclick="setHistoryPeriodFilter('today')">
+                            Hoy
+                        </button>
+                        <button type="button" class="filter-pill" id="pill-period-week" onclick="setHistoryPeriodFilter('week')">
+                            Esta Semana
+                        </button>
+                        <button type="button" class="filter-pill" id="pill-period-month" onclick="setHistoryPeriodFilter('month')">
+                            Este Mes
+                        </button>
+                        <button type="button" class="filter-pill" id="pill-period-custom" onclick="setHistoryPeriodFilter('custom')">
+                            <i class="fas fa-calendar-alt"></i> Personalizado
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 3. Rango de Fechas Personalizado (Desplegable) -->
+                <div id="history-custom-date-container" style="display:none; margin-bottom:10px; padding:10px; background:#fff; border-radius:8px; border:1px solid #ddd;">
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:130px;">
+                            <label style="display:block; font-size:11px; font-weight:bold; color:#555; margin-bottom:3px;">Desde:</label>
+                            <input type="date" id="history-date-from" class="search-input" style="margin-bottom:0; padding:6px 10px; font-size:13px; height:38px;">
+                        </div>
+                        <div style="flex:1; min-width:130px;">
+                            <label style="display:block; font-size:11px; font-weight:bold; color:#555; margin-bottom:3px;">Hasta:</label>
+                            <input type="date" id="history-date-to" class="search-input" style="margin-bottom:0; padding:6px 10px; font-size:13px; height:38px;">
+                        </div>
+                        <div style="display:flex; gap:6px; align-items:flex-end; padding-top:16px;">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="applyCustomDateFilter()" style="height:38px; padding:0 14px; font-weight:bold;">
+                                Aplicar
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="clearCustomDateFilter()" style="height:38px; padding:0 10px;">
+                                Limpiar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Cuadro de Búsqueda Rápida en el Historial -->
+                <div style="position:relative;">
+                    <i class="fas fa-search" style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:#999; font-size:13px;"></i>
+                    <input type="text" id="history-search" class="search-input" placeholder="Buscar por referencia, producto o descripción..." style="margin-bottom:0; padding-left:36px; padding-right:36px; font-size:13px; height:38px;" autocomplete="off">
+                    <button type="button" id="btn-clear-history-search" onclick="clearHistorySearch()" title="Limpiar búsqueda" style="display:none; position:absolute; right:10px; top:50%; transform:translateY(-50%); background:none; border:none; color:#999; font-size:18px; cursor:pointer;">&times;</button>
+                </div>
+            </div>
+
+            <!-- Resumen de Totales Filtrados -->
+            <div id="history-summary-card" class="history-summary-card">
+                <div style="display:flex; flex-direction:column;">
+                    <span style="font-size:11px; color:#666; font-weight:bold; text-transform:uppercase;" id="history-summary-title">Balance del Filtro</span>
+                    <strong style="font-size:16px; color:var(--text-dark);" id="history-summary-profit">$0.00</strong>
+                </div>
+                <div style="display:flex; gap:12px; font-size:12px; flex-wrap:wrap;">
+                    <span style="color:var(--success-green);"><i class="fas fa-arrow-down"></i> Ventas: <strong id="history-summary-sales">$0.00</strong></span>
+                    <span style="color:var(--accent-secondary);"><i class="fas fa-arrow-up"></i> Gastos: <strong id="history-summary-expenses">$0.00</strong></span>
+                    <span style="color:#666;"><i class="fas fa-receipt"></i> Movimientos: <strong id="history-summary-count">0</strong></span>
+                </div>
+            </div>
+
             <div class="feed-list" id="feed-list">
                 <!-- Feed se llena por JS -->
             </div>
@@ -114,6 +214,9 @@
             <div class="view-header-inline" style="flex-wrap:wrap; gap:10px;">
                 <h2>Inventario</h2>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-sm" onclick="exportBackupToExcel()" title="Descargar Respaldo Completo en Excel" style="background:#217346; color:#fff; display:inline-flex; align-items:center; gap:5px; border-radius:6px; font-weight:bold;">
+                        <i class="fas fa-file-excel"></i> Excel
+                    </button>
                     <button type="button" class="btn btn-danger btn-sm" onclick="openResetZeroModal()" title="Dar de baja o dejar inventario en cero" style="display:inline-flex; align-items:center; gap:5px;">
                         <i class="fas fa-eraser"></i> En Cero / Baja
                     </button>
@@ -181,6 +284,19 @@
                         <i class="fab fa-bluetooth-b"></i> Probar Bluetooth
                     </button>
                 </div>
+            </div>
+
+            <!-- Respaldo Completo en Excel (.xlsx) -->
+            <div class="card bg-neutral" style="margin-top: 20px; border: 1px solid #217346;">
+                <h3 style="margin-bottom: 8px; color: #217346; display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-file-excel"></i> Respaldo en Excel (.xlsx)
+                </h3>
+                <p style="font-size: 13px; color: #555; margin-bottom: 12px; line-height: 1.4;">
+                    Descarga en tu teléfono o computadora un archivo Excel con 4 hojas organizadas: <strong>Resumen de Balance, Inventario de Productos, Historial de Ventas, y Gastos / Compras</strong>.
+                </p>
+                <button type="button" class="btn w-100" onclick="exportBackupToExcel()" style="background:#217346; color:#fff; display:flex; align-items:center; justify-content:center; gap:8px; font-weight:bold; padding:12px; font-size:14px; border:none; border-radius:8px; box-shadow:0 2px 6px rgba(33,115,70,0.3); cursor:pointer;">
+                    <i class="fas fa-file-excel" style="font-size:18px;"></i> DESCARGAR RESPALDO EN EXCEL (.XLSX)
+                </button>
             </div>
 
             <!-- Gestión de Reinicio / Dejar en Cero -->
@@ -546,6 +662,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
 
-    <script src="app.js?v=2.6"></script>
+    <script src="app.js?v=2.8"></script>
 </body>
 </html>
