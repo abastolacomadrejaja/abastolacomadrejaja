@@ -1056,10 +1056,275 @@ function populateReceiptData(tx, cartItems) {
     if (recCop) recCop.innerText = `${(tx.total * copRate).toLocaleString('es-CO')} COP`;
     if (recVes) recVes.innerText = `${(tx.total * vesRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} VES`;
     if (recBcvRate) recBcvRate.innerText = `1 USD = ${vesRate.toLocaleString('es-VE')} Bs`;
+
+    // Poblar también el contenedor exclusivo de impresión térmica 58mm (PT-230)
+    populateThermalPrintContainer(tx, cartItems);
+}
+
+function populateThermalPrintContainer(tx, cartItems) {
+    const container = document.getElementById('thermal-print-container');
+    if (!container || !tx) return;
+
+    const txCode = tx.id.split('-')[0].toUpperCase();
+    const dateFormatted = new Date(tx.date).toLocaleString('es-VE', {
+        dateStyle: 'short',
+        timeStyle: 'short'
+    });
+    const vesRate = (tx.ratesAtTime && tx.ratesAtTime.ves) || data.settings.ves;
+    const copRate = (tx.ratesAtTime && tx.ratesAtTime.cop) || data.settings.cop;
+
+    let itemsHtml = '';
+    (cartItems || tx.items || []).forEach(item => {
+        const name = item.product ? item.product.name : (item.name || 'Producto');
+        const price = item.product ? item.product.basePrice : (item.priceAtTime || 0);
+        const itemTotal = price * item.qty;
+        itemsHtml += `
+            <div class="tp-item">
+                <span class="tp-item-left">${item.qty}x ${name}</span>
+                <span class="tp-item-right">${formatUSD(itemTotal)}</span>
+            </div>
+        `;
+    });
+
+    container.innerHTML = `
+        <div class="tp-header">
+            <img src="LOGOTIPO%20LA%20COMADREJAJA.jpeg" alt="Logo" class="tp-logo">
+            <div class="tp-title">Abasto La Comadrejaja</div>
+            <div class="tp-info">Lomas Blancas Cordero</div>
+            <div class="tp-info">Tel: +58 424-6439639</div>
+        </div>
+        <div class="tp-divider"></div>
+        <div class="tp-meta">
+            <div>Fecha: ${dateFormatted}</div>
+            <div>Factura Ref: ${txCode}</div>
+        </div>
+        <div class="tp-divider"></div>
+        <div>${itemsHtml}</div>
+        <div class="tp-divider"></div>
+        <div>
+            <div class="tp-total-row tp-main">
+                <span>TOTAL USD:</span>
+                <span>${formatUSD(tx.total)}</span>
+            </div>
+            <div class="tp-total-row">
+                <span>Equiv. COP:</span>
+                <span>${(tx.total * copRate).toLocaleString('es-CO')}</span>
+            </div>
+            <div class="tp-total-row">
+                <span>Equiv. VES:</span>
+                <span>${(tx.total * vesRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs</span>
+            </div>
+            <div class="tp-total-row" style="font-size:9.5px;">
+                <span>Tasa BCV:</span>
+                <span>${vesRate.toLocaleString('es-VE')} Bs</span>
+            </div>
+        </div>
+        <div class="tp-footer">
+            <div>¡Gracias por su compra!</div>
+            <div>Abasto La Comadrejaja</div>
+        </div>
+    `;
 }
 
 function printReceipt() {
+    if (currentTxForReceipt) {
+        populateThermalPrintContainer(currentTxForReceipt, currentCartForReceipt);
+    }
     window.print();
+}
+
+// ==========================================
+// Impresión Térmica Directa Bluetooth (PT-230 ESC/POS 58mm)
+// ==========================================
+let btPrinterDevice = null;
+let btPrinterChar = null;
+
+function cleanAsciiForThermal(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/[áàäâ]/g, 'a').replace(/[ÁÀÄÂ]/g, 'A')
+        .replace(/[éèëê]/g, 'e').replace(/[ÉÈËÊ]/g, 'E')
+        .replace(/[íìïî]/g, 'i').replace(/[ÍÌÏÎ]/g, 'I')
+        .replace(/[óòöô]/g, 'o').replace(/[ÓÒÖÔ]/g, 'O')
+        .replace(/[úùüû]/g, 'u').replace(/[ÚÙÜÛ]/g, 'U')
+        .replace(/ñ/g, 'n').replace(/Ñ/g, 'N')
+        .replace(/[¡•]/g, '');
+}
+
+function formatLine32(leftText, rightText) {
+    const left = cleanAsciiForThermal(leftText);
+    const right = cleanAsciiForThermal(rightText);
+    const maxLen = 32;
+    const spaceNeeded = maxLen - left.length - right.length;
+    if (spaceNeeded >= 1) {
+        return left + ' '.repeat(spaceNeeded) + right + '\n';
+    } else {
+        // Si el nombre es muy largo, truncar el lado izquierdo para mantener la columna derecha alineada
+        const maxLeft = Math.max(1, maxLen - right.length - 1);
+        return left.substring(0, maxLeft) + ' ' + right + '\n';
+    }
+}
+
+function buildEscPosBytes(tx, cartItems) {
+    const encoder = new TextEncoder();
+    const chunks = [];
+    const pushBytes = (arr) => chunks.push(new Uint8Array(arr));
+    const pushText = (txt) => chunks.push(encoder.encode(cleanAsciiForThermal(txt)));
+
+    const txCode = tx.id.split('-')[0].toUpperCase();
+    const dateStr = new Date(tx.date).toLocaleString('es-VE', { dateStyle: 'short', timeStyle: 'short' });
+    const vesRate = (tx.ratesAtTime && tx.ratesAtTime.ves) || data.settings.ves;
+    const copRate = (tx.ratesAtTime && tx.ratesAtTime.cop) || data.settings.cop;
+
+    // 1. Inicializar impresora ESC @
+    pushBytes([0x1B, 0x40]);
+    // 2. Centrar texto ESC a 1
+    pushBytes([0x1B, 0x61, 0x01]);
+    // 3. Negrita ON
+    pushBytes([0x1B, 0x45, 0x01]);
+    pushText("ABASTO LA COMADREJAJA\n");
+    // Negrita OFF
+    pushBytes([0x1B, 0x45, 0x00]);
+    pushText("Lomas Blancas Cordero\n");
+    pushText("Tel: +58 424-6439639\n");
+    pushText("--------------------------------\n");
+
+    // 4. Alinear a la izquierda ESC a 0
+    pushBytes([0x1B, 0x61, 0x00]);
+    pushText(`Fecha: ${dateStr}\n`);
+    pushText(`Factura Ref: ${txCode}\n`);
+    pushText("--------------------------------\n");
+
+    // 5. Lista de productos (32 columnas para 58mm)
+    (cartItems || tx.items || []).forEach(item => {
+        const name = item.product ? item.product.name : (item.name || 'Producto');
+        const price = item.product ? item.product.basePrice : (item.priceAtTime || 0);
+        const left = `${item.qty}x ${name}`;
+        const right = `$${(price * item.qty).toFixed(2)}`;
+        pushText(formatLine32(left, right));
+    });
+
+    pushText("--------------------------------\n");
+
+    // 6. Totales
+    pushBytes([0x1B, 0x45, 0x01]); // Negrita ON
+    pushText(formatLine32("TOTAL USD:", `$${tx.total.toFixed(2)}`));
+    pushBytes([0x1B, 0x45, 0x00]); // Negrita OFF
+
+    pushText(formatLine32("Equiv. COP:", `${(tx.total * copRate).toLocaleString('es-CO')} COP`));
+    pushText(formatLine32("Equiv. VES:", `${(tx.total * vesRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Bs`));
+    pushText(formatLine32("Tasa BCV:", `${vesRate.toLocaleString('es-VE')} Bs`));
+    pushText("--------------------------------\n");
+
+    // 7. Pie de página centrado y avance exacto de 3 líneas (sin desperdiciar papel)
+    pushBytes([0x1B, 0x61, 0x01]);
+    pushText("Gracias por su compra!\n");
+    pushText("Abasto La Comadrejaja\n\n\n");
+
+    // Unir todos los bloques en un solo Uint8Array
+    const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const c of chunks) {
+        result.set(c, offset);
+        offset += c.length;
+    }
+    return result;
+}
+
+async function connectBluetoothPrinter() {
+    if (btPrinterDevice && btPrinterDevice.gatt && btPrinterDevice.gatt.connected && btPrinterChar) {
+        return btPrinterChar;
+    }
+
+    const PRINT_SERVICES = [
+        '000018f0-0000-1000-8000-00805f9b34fb',
+        'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        '0000ff00-0000-1000-8000-00805f9b34fb',
+        '0000ffe0-0000-1000-8000-00805f9b34fb',
+        '0000ae30-0000-1000-8000-00805f9b34fb'
+    ];
+
+    btPrinterDevice = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: PRINT_SERVICES
+    });
+
+    const server = await btPrinterDevice.gatt.connect();
+    const services = await server.getPrimaryServices();
+
+    for (const service of services) {
+        const characteristics = await service.getCharacteristics();
+        for (const char of characteristics) {
+            if (char.properties.write || char.properties.writeWithoutResponse) {
+                btPrinterChar = char;
+                return btPrinterChar;
+            }
+        }
+    }
+
+    throw new Error("No se encontró el canal de escritura en la impresora Bluetooth seleccionada.");
+}
+
+async function printViaBluetooth(tx, cartItems, btnEl = null) {
+    if (!tx) return;
+
+    if (!navigator.bluetooth) {
+        alert("Tu navegador actual no tiene activado Web Bluetooth directo.\n\n• En Android o PC usa Google Chrome.\n• También puedes usar el botón 'Imprimir (Cable/PC)' que ya está ajustado a 58mm para la PT-230.");
+        return;
+    }
+
+    const originalHtml = btnEl ? btnEl.innerHTML : '';
+    if (btnEl) {
+        btnEl.innerHTML = `<i class="fas fa-spinner fa-spin" style="font-size:20px;"></i><span>Conectando...</span>`;
+        btnEl.disabled = true;
+    }
+
+    try {
+        const char = await connectBluetoothPrinter();
+        const bytes = buildEscPosBytes(tx, cartItems);
+
+        // Enviar en fragmentos de 100 bytes para máxima compatibilidad con el buffer de la PT-230
+        const chunkSize = 100;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            const slice = bytes.slice(i, i + chunkSize);
+            if (char.properties.writeWithoutResponse) {
+                await char.writeValueWithoutResponse(slice);
+            } else {
+                await char.writeValue(slice);
+            }
+            await new Promise(r => setTimeout(r, 25));
+        }
+    } catch (err) {
+        console.warn("Aviso Bluetooth PT-230:", err);
+        btPrinterChar = null;
+        if (err.name !== 'NotFoundError') {
+            alert("No se pudo enviar a la impresora Bluetooth: " + (err.message || err) + "\n\nVerifica que la PT-230 esté encendida y con el Bluetooth disponible.");
+        }
+    } finally {
+        if (btnEl) {
+            btnEl.innerHTML = originalHtml;
+            btnEl.disabled = false;
+        }
+    }
+}
+
+function getSampleTestReceipt() {
+    const sampleTx = {
+        id: 'PRUEBA58-0000',
+        date: Date.now(),
+        total: 3.50,
+        ratesAtTime: {
+            cop: data.settings.cop,
+            ves: data.settings.ves
+        }
+    };
+    const sampleItems = [
+        { qty: 1, product: { name: 'Producto de Prueba 1', basePrice: 1.50 } },
+        { qty: 2, product: { name: 'Producto de Prueba 2', basePrice: 1.00 } }
+    ];
+    return { sampleTx, sampleItems };
 }
 
 async function generateReceiptCanvas() {
@@ -1269,6 +1534,30 @@ function sendReceiptWhatsAppText() {
 // Event Listeners para modal de factura
 const btnActionPrint = document.getElementById('btn-action-print');
 if (btnActionPrint) btnActionPrint.addEventListener('click', printReceipt);
+
+const btnActionBtPrint = document.getElementById('btn-action-bt-print');
+if (btnActionBtPrint) {
+    btnActionBtPrint.addEventListener('click', () => {
+        printViaBluetooth(currentTxForReceipt, currentCartForReceipt, btnActionBtPrint);
+    });
+}
+
+const btnTestPrintUsb = document.getElementById('btn-test-print-usb');
+if (btnTestPrintUsb) {
+    btnTestPrintUsb.addEventListener('click', () => {
+        const { sampleTx, sampleItems } = getSampleTestReceipt();
+        populateThermalPrintContainer(sampleTx, sampleItems);
+        window.print();
+    });
+}
+
+const btnTestPrintBt = document.getElementById('btn-test-print-bt');
+if (btnTestPrintBt) {
+    btnTestPrintBt.addEventListener('click', () => {
+        const { sampleTx, sampleItems } = getSampleTestReceipt();
+        printViaBluetooth(sampleTx, sampleItems, btnTestPrintBt);
+    });
+}
 
 const btnActionWhatsappImg = document.getElementById('btn-action-whatsapp-img');
 if (btnActionWhatsappImg) btnActionWhatsappImg.addEventListener('click', sendReceiptWhatsAppImage);

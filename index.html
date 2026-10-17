@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>La Comadrejaja</title>
-    <link rel="stylesheet" href="styles.css?v=2.3">
+    <link rel="stylesheet" href="styles.css?v=2.4">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- HTML5 QR Code -->
@@ -158,6 +158,24 @@
                     </div>
                 </div>
                 <button class="btn btn-primary w-100" id="btn-save-rates">GUARDAR TASAS</button>
+            </div>
+
+            <!-- Impresora Térmica PT-230 (58mm - Cable y Bluetooth) -->
+            <div class="card bg-neutral" style="margin-top: 20px; border: 1px solid #ddd;">
+                <h3 style="margin-bottom: 8px; color: var(--text-dark); display:flex; align-items:center; gap:8px;">
+                    <i class="fas fa-print" style="color:var(--accent-primary);"></i> Impresora Térmica PT-230 (58mm)
+                </h3>
+                <p style="font-size: 13px; color: #555; margin-bottom: 12px; line-height: 1.4;">
+                    Optimizado para rollo térmico de <strong>58mm (48mm de impresión)</strong> sin espacio en blanco sobrante. Puedes imprimir por <strong>Cable USB</strong> o directo por <strong>Bluetooth</strong>:
+                </p>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <button type="button" class="btn btn-primary btn-sm" id="btn-test-print-usb" style="display:flex; align-items:center; justify-content:center; gap:6px; padding:10px; font-weight:bold;">
+                        <i class="fas fa-print"></i> Probar Cable / PC
+                    </button>
+                    <button type="button" class="btn btn-sm" id="btn-test-print-bt" style="background:#0066cc; color:#fff; display:flex; align-items:center; justify-content:center; gap:6px; padding:10px; font-weight:bold;">
+                        <i class="fab fa-bluetooth-b"></i> Probar Bluetooth
+                    </button>
+                </div>
             </div>
 
             <!-- Gestión de Reinicio / Dejar en Cero -->
@@ -408,14 +426,21 @@
 
             <!-- Botones de Acción Principales -->
             <div class="modal-sale-actions" style="margin-bottom: 15px;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-                    <button type="button" class="btn btn-primary" id="btn-action-print" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:12px 10px; font-size:13px;">
-                        <i class="fas fa-print" style="font-size:22px;"></i>
-                        <span>Imprimir Factura</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                    <button type="button" class="btn btn-primary" id="btn-action-print" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px 8px; font-size:12px;">
+                        <i class="fas fa-print" style="font-size:20px;"></i>
+                        <span>Imprimir (Cable/PC)</span>
                     </button>
-                    <button type="button" class="btn" id="btn-action-whatsapp-img" style="background:#25D366; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:12px 10px; font-size:13px; font-weight:bold;">
-                        <i class="fab fa-whatsapp" style="font-size:24px;"></i>
-                        <span>Enviar a WhatsApp</span>
+                    <button type="button" class="btn" id="btn-action-bt-print" style="background:#0066cc; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:10px 8px; font-size:12px; font-weight:bold;">
+                        <i class="fab fa-bluetooth-b" style="font-size:20px;"></i>
+                        <span>Imprimir Bluetooth</span>
+                    </button>
+                </div>
+
+                <div style="margin-bottom: 8px;">
+                    <button type="button" class="btn w-100" id="btn-action-whatsapp-img" style="background:#25D366; color:#fff; display:flex; align-items:center; justify-content:center; gap:8px; padding:10px; font-size:13px; font-weight:bold;">
+                        <i class="fab fa-whatsapp" style="font-size:20px;"></i>
+                        <span>Enviar Factura en Imagen por WhatsApp</span>
                     </button>
                 </div>
 
@@ -441,7 +466,7 @@
             <!-- Vista Previa de la Factura -->
             <div style="text-align:left; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:12px; font-weight:bold; color:#777;">Vista previa de la factura:</span>
-                <span style="font-size:11px; color:#999;"><i class="fas fa-receipt"></i> Formato térmico 80mm</span>
+                <span style="font-size:11px; color:#999;"><i class="fas fa-receipt"></i> Térmica 58mm (PT-230)</span>
             </div>
 
             <div id="receipt-preview-wrapper" style="max-height: 280px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; padding: 12px; margin-bottom: 15px; display: flex; justify-content: center;">
@@ -509,10 +534,13 @@
         </div>
     </div>
 
+    <!-- Contenedor dedicado para impresión térmica 58mm (PT-230) -->
+    <div id="thermal-print-container"></div>
+
     <!-- Firebase SDK (Compat) para Navegador Vanilla JS -->
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore-compat.js"></script>
 
-    <script src="app.js?v=2.3"></script>
+    <script src="app.js?v=2.4"></script>
 </body>
 </html>
